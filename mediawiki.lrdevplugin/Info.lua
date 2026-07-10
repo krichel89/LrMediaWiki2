@@ -26,6 +26,7 @@ return {
 		'MediaWikiMetadataSetAll.lua',
 		'MediaWikiMetadataSetInformation.lua',
 		'MediaWikiMetadataSetInformationDe.lua',
+		'MediaWikiMetadataSetDescriptionAll.lua',
 		'MediaWikiMetadataSetArtwork.lua',
 		'MediaWikiMetadataSetObjectPhoto.lua',
 	},
@@ -35,6 +36,21 @@ return {
 	LrPluginInfoProvider = 'MediaWikiPluginInfoProvider.lua',
 
 	LrPluginInfoUrl = 'https://commons.wikimedia.org/wiki/Commons:LrMediaWiki',
+
+	-- Same tools additionally in the Library menu (Bibliothek >
+	-- Zusatzmoduloptionen), one menu closer to metadata work. The titles are
+	-- identical to the File-menu entries on purpose, so a macOS app shortcut
+	-- bound to the title triggers the same script from either menu.
+	LrLibraryMenuItems = {
+		{
+			title = "🏷️ Edit Structured Data (SDC)",
+			file = "ToolEditSdc.lua",
+		},
+		{
+			title = "🔁 Description fields ↔ Wikitext",
+			file = "ToolConvertDescriptionAll.lua",
+		},
+	},
 
 	LrExportMenuItems = {
 		{
@@ -54,6 +70,10 @@ return {
 			file = "ToolEditSdc.lua",
 		},
 		{
+			title = "🔁 Description fields ↔ Wikitext",
+			file = "ToolConvertDescriptionAll.lua",
+		},
+		{
 			title = "📄 Set title to file prefix and headline",
 			file = "ToolSetTitleToPrefixAndHeadline.lua",
 		},
@@ -69,17 +89,14 @@ return {
 		--]]
 	},
 
-	-- Alte Version (1.8.0)
-	VERSION = {
-		major = 1,
-		minor = 8,
-		revision = 0,
-	},
-
-	-- Neue Version (2.0.0)
+	-- Versioning policy: the third digit (revision) is bumped on every
+	-- delivered change; the second digit (minor) changes only on explicit
+	-- request. (Note: Lua silently keeps only the LAST duplicate key in a
+	-- table constructor – that is why the old duplicate VERSION entry was
+	-- removed here.)
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 0,
+		revision = 9,
 	},
 }
