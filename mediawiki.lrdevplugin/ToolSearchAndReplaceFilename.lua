@@ -17,14 +17,31 @@ local u = require 'utils'
 
 -- Functions -------------------------------------------------------------------
 
+-- Treat user input literally, not as a Lua pattern: escape all pattern magic
+-- characters in the search string. Without this, a search ending in "%"
+-- (e.g. "50%") or containing an unmatched "[" throws a runtime error
+-- mid-batch, and characters such as ( ) . * + - ? ^ $ silently change the
+-- matching semantics (e.g. "(Test)" never matches the literal text).
+local function escapePattern(s)
+    return (s:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+end
+
+-- In the replacement string only '%' is special (%0, %1, ...); escape it.
+local function escapeReplacement(s)
+    return (s:gsub('%%', '%%%%'))
+end
+
 local function searchAndReplaceTitle( photo, searchStr, replaceStr )
-    local filename = string.sub( tostring(photo:getFormattedMetadata('fileName')),  0, -5)
-    --underscore, num, oldlabel = string.match(filename, 'MJK(_*)(%d*)(.*)')
+    -- Strip the real file extension instead of blindly cutting the last four
+    -- characters (which mangled names with 4-letter extensions like .jpeg
+    -- or without any extension).
+    local fileName = tostring(photo:getFormattedMetadata('fileName'))
+    local filename = fileName:match('^(.*)%.[^.]+$') or fileName
 
     replaceStr = replaceStr or ""
 
     local title = filename
-    title = title:gsub(searchStr, replaceStr)
+    title = title:gsub(escapePattern(searchStr), escapeReplacement(replaceStr))
 
     return title
 end
@@ -34,7 +51,7 @@ local LrView = import "LrView"
 LrFunctionContext.callWithContext( 'dialogExample', function( context )
     local properties = LrBinding.makePropertyTable( context )
     properties.str = '_'
-    properties.replacStr = ''
+    properties.replaceStr = ''
 
     local f = LrView.osFactory()
     local contents = f:view { 
@@ -84,22 +101,31 @@ LrFunctionContext.callWithContext( 'dialogExample', function( context )
 
     if inputOk ~= "cancel" then
 
+        -- Guard: an empty search string would make gsub insert the
+        -- replacement between every character of the title.
+        if MediaWikiUtils.isStringEmpty(properties.str) then
+            LrDialogs.message("Search and Replace", "The search string is empty – nothing to do.", "info")
+            return
+        end
+
         local catalog = LrApplication.activeCatalog()
         local photo = catalog:getTargetPhoto()
         local photos = catalog:getTargetPhotos()
         local data = LrTasks.startAsyncTask(function()
             local data = ''
 
-            for key,photo in pairs(photos) do 
-                -- local persons = getPersons(photo)
-                local title = searchAndReplaceTitle(photo, properties.str, properties.replaceStr)
-                --text = text:gsub(", ", " and ")
+            -- One write transaction for the whole batch (instead of one per
+            -- photo): faster and a single undo step.
+            catalog:withWriteAccessDo('Set Filename', function()
+                for key,photo in pairs(photos) do
+                    -- local persons = getPersons(photo)
+                    local title = searchAndReplaceTitle(photo, properties.str, properties.replaceStr)
+                    --text = text:gsub(", ", " and ")
 
-                catalog:withWriteAccessDo('Set Filename', function()
-                    photo:setRawMetadata( 'title', title )        
+                    photo:setRawMetadata( 'title', title )
                     --photo:setRawMetadata( 'copyName', title .. '.CR2') 
-                end)
-            end
+                end
+            end)
             --utils.log(tostring(data))
 
             return data

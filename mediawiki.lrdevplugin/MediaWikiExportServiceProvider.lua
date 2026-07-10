@@ -33,6 +33,22 @@ local MediaWikiUtils = require 'MediaWikiUtils'
 
 local MediaWikiExportServiceProvider = {}
 
+-- Normalize a Structured-Data QID entered in the export dialog:
+-- trim surrounding whitespace and upper-case a leading "q" (q640 -> Q640),
+-- so the value matches the ^Q%d+$ form expected by MediaWikiApi.wbEditEntity.
+-- Returns '' for anything that is not a single, well-formed QID.
+local function normalizeSdcQid(value)
+	if not MediaWikiUtils.isStringFilled(value) then
+		return ''
+	end
+	local qid = MediaWikiUtils.trim(value)
+	qid = qid:gsub('^[qQ](%d+)$', 'Q%1')
+	if qid:match('^Q%d+$') then
+		return qid
+	end
+	return '' -- not a valid single QID; ignored (per-file description_all can still set one)
+end
+
 local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 	-- All decisions done by this function should be documented at user's guide.
 	local artworkParameters = { -- Parameters of infobox template "Artwork"
@@ -71,6 +87,8 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 		info_categories = propertyTable.info_categories,
 		-- Structured data
 		caption_en = '', -- '<!-- File Caption (en) -->',
+		depicts = '', -- P180, comma-separated QIDs (Metadata panel field)
+		created_during = '', -- P10408, single QID (Metadata panel field)
 		-- Single freetext description field (replaces description, date, source, author, etc.)
 		['description_all'] = '', -- '<!-- Wikitext description -->',
 		categories = '', -- '<!-- Per-file categories -->',
@@ -87,6 +105,12 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 	-- Field "description_all" – single freetext Wikitext field
 	local descriptionAll = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'description_all') or ''
 	exportFields['description_all'] = descriptionAll
+
+	-- Structured-data sidebar fields (Metadata panel): depicts (P180) and
+	-- created during (P10408). Read as-is; the priority relative to
+	-- description_all / the export dialog default is applied in processRenderedPhotos.
+	exportFields.depicts = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'depicts') or ''
+	exportFields.created_during = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'created_during') or ''
 
 	-- Field "location" (auto-prepended to description_all if GPS data is available)
 	local gps = photo:getRawMetadata('gps')
@@ -558,14 +582,48 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 					filledExportFields.structuredData = arguments.structuredData or {}
 					-- Set all structured data (labels + claims) in a single API call
 					local sd = filledExportFields.structuredData or {}
+					-- Per-photo sidebar fields (Metadata panel) take priority over any
+					-- depicts=/created_during= line in description_all. The batch-level
+					-- default below only applies if neither of them is set.
+					if MediaWikiUtils.isStringFilled(filledExportFields.depicts) then
+						sd.depicts = filledExportFields.depicts
+					end
+					if MediaWikiUtils.isStringFilled(filledExportFields.created_during) then
+						sd.created_during = filledExportFields.created_during
+					end
+					-- Merge batch-level SDC defaults from the export dialog:
+					-- creator (P170), copyright (P6216), license (P275) and
+					-- created during (P10408). A value set per file via
+					-- description_all takes priority over the batch default.
+					if not MediaWikiUtils.isStringFilled(sd.creator) then
+						sd.creator = normalizeSdcQid(exportSettings.sdc_creator)
+					end
+					if not MediaWikiUtils.isStringFilled(sd.copyright) then
+						sd.copyright = normalizeSdcQid(exportSettings.sdc_copyright)
+					end
+					if not MediaWikiUtils.isStringFilled(sd.license) then
+						sd.license = normalizeSdcQid(exportSettings.sdc_license)
+					end
+					if not MediaWikiUtils.isStringFilled(sd.created_during) then
+						sd.created_during = normalizeSdcQid(exportSettings.sdc_created_during)
+					end
+					-- A file has structured data if it has any caption (en from the
+					-- caption_en field or any caption_XX language), or any claim.
+					local hasAnyCaption = MediaWikiUtils.isStringFilled(filledExportFields.caption_en)
+					if not hasAnyCaption then
+						for k, v in pairs(sd) do
+							if k:match('^caption_') and MediaWikiUtils.isStringFilled(v) then
+								hasAnyCaption = true
+								break
+							end
+						end
+					end
 					local hasStructuredData =
-						MediaWikiUtils.isStringFilled(filledExportFields.caption_en)
-						or MediaWikiUtils.isStringFilled(sd.caption_en)
-						or MediaWikiUtils.isStringFilled(sd.caption_de)
-						or MediaWikiUtils.isStringFilled(sd.caption_fr)
+						hasAnyCaption
 						or MediaWikiUtils.isStringFilled(sd.creator)
 						or MediaWikiUtils.isStringFilled(sd.copyright)
 						or MediaWikiUtils.isStringFilled(sd.license)
+						or MediaWikiUtils.isStringFilled(sd.created_during)
 						or MediaWikiUtils.isStringFilled(sd.depicts)
 					if hasStructuredData then
 						message = MediaWikiInterface.wbSetStructuredData(filledExportFields, fileName)
@@ -1064,6 +1122,71 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 				},
 			},
 		},
+		{	-- third section: Structured Data (SDC), batch-level defaults
+			title = LOC "$$$/LrMediaWiki/Section/StructuredData/Title=LrMediaWiki Structured Data (SDC)",
+			synopsis = bind 'sdc_license',
+
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/StructuredData/Creator=Creator (P170)" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Description (all)” overrides this value.",
+				},
+				viewFactory:edit_field {
+					value = bind 'sdc_creator',
+					immediate = true,
+					fill_horizontal = 1,
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Description (all)” overrides this value.",
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/StructuredData/Copyright=Copyright status (P6216)" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CopyrightTooltip=Copyright status (P6216)^n^nWikidata QID for the copyright status. Default Q73566113 (as used in Cammello). Applies to every file; a per-file copyright= line overrides it.",
+				},
+				viewFactory:edit_field {
+					value = bind 'sdc_copyright',
+					immediate = true,
+					fill_horizontal = 1,
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CopyrightTooltip=Copyright status (P6216)^n^nWikidata QID for the copyright status. Default Q73566113 (as used in Cammello). Applies to every file; a per-file copyright= line overrides it.",
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/StructuredData/License=License (P275)" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/LicenseTooltip=License (P275)^n^nWikidata QID of the license. Q18199165 = CC BY-SA 4.0, Q6938433 = CC0 (values as used in Cammello – please verify). Applies to every file; a per-file license= line overrides it.",
+				},
+				viewFactory:combo_box {
+					value = bind 'sdc_license',
+					immediate = true,
+					fill_horizontal = 1,
+					items = {
+						'Q18199165',
+						'Q6938433',
+					},
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/LicenseTooltip=License (P275)^n^nWikidata QID of the license. Q18199165 = CC BY-SA 4.0, Q6938433 = CC0 (values as used in Cammello – please verify). Applies to every file; a per-file license= line overrides it.",
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatedDuring=Created during (P10408)" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatedDuringTooltip=Created during (P10408)^n^nWikidata QID of the event the files were created during, e.g. Q124692383 (81st Venice International Film Festival). Applies to every file; a per-file created_during= line overrides it.",
+				},
+				viewFactory:edit_field {
+					value = bind 'sdc_created_during',
+					immediate = true,
+					fill_horizontal = 1,
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatedDuringTooltip=Created during (P10408)^n^nWikidata QID of the event the files were created during, e.g. Q124692383 (81st Venice International Film Festival). Applies to every file; a per-file created_during= line overrides it.",
+				},
+			},
+		},
 	}
 end
 
@@ -1080,7 +1203,12 @@ MediaWikiExportServiceProvider.canExportVideo = false
 MediaWikiExportServiceProvider.exportPresetFields = {
 	-- Section Login Information:
 	{ key = 'username', default = '' },
-	{ key = 'password', default = '' },
+	-- SECURITY: 'password' is deliberately NOT a preset field. Preset fields
+	-- are persisted in plain text (.lrtemplate / preferences on disk); saving
+	-- a preset while the password field is filled would have written the
+	-- password to disk. The password lives only in LrPasswords (see
+	-- MediaWikiUtils.storePassword) and is put into the property table at
+	-- runtime by startDialog / processRenderedPhotos.
 	{ key = 'api_path', default = 'https://commons.wikimedia.org/w/api.php' },
 	-- Section Upload Information:
 	{ key = 'info_template', default = 'Information' },
@@ -1093,6 +1221,11 @@ MediaWikiExportServiceProvider.exportPresetFields = {
 	{ key = 'info_license', default = '{{Cc-by-sa-4.0}}' },
 	{ key = 'info_categories', default = '' },
 	{ key = 'gallery', default = '' },
+	-- Section Structured Data (SDC), batch-level defaults (Wikidata QIDs):
+	{ key = 'sdc_creator', default = '' },
+	{ key = 'sdc_copyright', default = 'Q73566113' },
+	{ key = 'sdc_license', default = 'Q18199165' },
+	{ key = 'sdc_created_during', default = '' },
 }
 
 return MediaWikiExportServiceProvider

@@ -33,6 +33,38 @@ function MediaWikiApi.httpError(status)
 	LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Api/HttpError=Received HTTP status ^1.", status))
 end
 
+-- Keys whose values must never be written to the log file.
+local SENSITIVE_KEYS = {
+	password = true,
+	lgpassword = true,
+	token = true,
+	logintoken = true,
+	lgtoken = true,
+}
+
+-- Build a log-safe representation of the request arguments (values of
+-- sensitive keys are replaced by '***'). The actual HTTP request is NOT
+-- affected; this string is only used for tracing.
+local function redactedArguments(arguments)
+	local parts = {}
+	for key, value in pairs(arguments) do
+		if SENSITIVE_KEYS[key] then
+			value = '***'
+		end
+		parts[#parts + 1] = tostring(key) .. '=' .. tostring(value)
+	end
+	return table.concat(parts, '&')
+end
+
+-- Mask token values in server responses before tracing (e.g.
+-- logintoken="..." / csrftoken="..." in the XML result).
+local function redactedResponse(body)
+	if type(body) ~= 'string' then
+		return body
+	end
+	return (body:gsub('(%a*token=")[^"]*(")', '%1***%2'))
+end
+
 function MediaWikiApi.mediaWikiError(code, info)
 	LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Api/MediaWikiError=The MediaWiki error ^1 occured: ^2", code, info))
 end
@@ -101,8 +133,8 @@ function MediaWikiApi.performHttpRequest(path, arguments, requestHeaders, post)
 	MediaWikiUtils.trace('Performing HTTP request');
 	MediaWikiUtils.trace('Path:')
 	MediaWikiUtils.trace(path)
-	MediaWikiUtils.trace('Request body:');
-	MediaWikiUtils.trace(requestBody);
+	MediaWikiUtils.trace('Request body (credentials/tokens redacted):');
+	MediaWikiUtils.trace(redactedArguments(arguments));
 
 	local resultBody, resultHeaders
 	if post then
@@ -120,8 +152,8 @@ function MediaWikiApi.performHttpRequest(path, arguments, requestHeaders, post)
 		MediaWikiApi.httpError(resultHeaders.status)
 	end
 
-	MediaWikiUtils.trace('Result body:');
-	MediaWikiUtils.trace(resultBody);
+	MediaWikiUtils.trace('Result body (tokens redacted):');
+	MediaWikiUtils.trace(redactedResponse(resultBody));
 
 	return resultBody
 end
@@ -202,7 +234,7 @@ function MediaWikiApi.login(username, password)
 	local xml = MediaWikiApi.performRequest(arguments)
 	local logintoken = xml.query.tokens.logintoken
 
-	MediaWikiUtils.tracef('logintoken 1: %s', logintoken)
+	MediaWikiUtils.trace('logintoken received (redacted)')
 
 	-- Perform login:
 	if credentials == 'main-account' then
@@ -279,7 +311,7 @@ function MediaWikiApi.logout()
 	}
 	local xml = MediaWikiApi.performRequest(arguments)
 	local logintoken = xml.query.tokens.logintoken
-	MediaWikiUtils.tracef('logintoken 2: %s', logintoken)
+	MediaWikiUtils.trace('logintoken received (redacted)')
 	arguments = {
 		action = 'logout',
 		token = logintoken,
@@ -312,6 +344,9 @@ end
 
 function MediaWikiApi.getPageContent(page)
 	-- Use action=raw via performHttpRequest to get wikitext directly as plain text
+	-- Returns: content, httpStatus
+	--   content is nil if the page is missing (404) OR on any other error;
+	--   callers must check httpStatus to tell those cases apart (404 = missing).
 
 	local requestHeaders = {
 		{
@@ -326,10 +361,11 @@ function MediaWikiApi.getPageContent(page)
 
 	local LrHttp = import 'LrHttp'
 	local resultBody, resultHeaders = LrHttp.get(url, requestHeaders)
-	if resultHeaders and resultHeaders.status == 200 and resultBody then
-		return resultBody
+	local status = resultHeaders and resultHeaders.status or nil
+	if status == 200 and resultBody then
+		return resultBody, status
 	else
-		return nil -- page does not exist or error
+		return nil, status -- 404 = page does not exist; anything else = error
 	end
 end
 
@@ -379,24 +415,61 @@ function MediaWikiApi.wbEditEntity(pageID, labelsTable, claimsTable)
 	-- Set all labels and claims in a single API call
 	-- labelsTable: { en = "...", de = "...", ... }
 	-- claimsTable: list of { property = "P170", value = "Q640" }
-	local labelsJson = '{'
-	local first = true
+	--
+	-- The data JSON is built with JSON:encode (never by string concatenation),
+	-- so quotes, backslashes and control characters in caption values are
+	-- escaped correctly and cannot break or inject into the JSON structure.
+	local labels = {}
 	for lang, val in pairs(labelsTable) do
-		if not first then labelsJson = labelsJson .. ',' end
-		labelsJson = labelsJson .. '"' .. lang .. '":{"language":"' .. lang .. '","value":"' .. val:gsub('"', '\\"') .. '"}'
-		first = false
+		labels[lang] = { language = lang, value = val }
 	end
-	labelsJson = labelsJson .. '}'
 
-	local claimsJson = '['
-	for i, claim in ipairs(claimsTable) do
-		if i > 1 then claimsJson = claimsJson .. ',' end
-		local numericId = claim.value:match('^Q(%d+)$')
-		claimsJson = claimsJson .. '{"mainsnak":{"snaktype":"value","property":"' .. claim.property .. '","datavalue":{"type":"wikibase-entityid","value":{"entity-type":"item","numeric-id":' .. numericId .. ',"id":"' .. claim.value .. '"}}},"type":"statement","rank":"' .. (claim.rank or 'normal') .. '"}'
+	local claims = {}
+	for _, claim in ipairs(claimsTable) do
+		-- Normalize the value: trim surrounding whitespace and upper-case a
+		-- leading "q" (q640 -> Q640). Only emit a claim whose value is then a
+		-- single, well-formed QID (Q + digits); a malformed or empty value is
+		-- skipped instead of breaking the whole request.
+		local canonical = ''
+		if claim.value then
+			canonical = claim.value:gsub('^%s*(.-)%s*$', '%1')
+			canonical = canonical:gsub('^[qQ](%d+)$', 'Q%1')
+		end
+		local numericId = tonumber(canonical:match('^Q(%d+)$'))
+		if numericId then
+			claims[#claims + 1] = {
+				mainsnak = {
+					snaktype = 'value',
+					property = claim.property,
+					datavalue = {
+						type = 'wikibase-entityid',
+						value = {
+							['entity-type'] = 'item',
+							['numeric-id'] = numericId,
+							id = canonical,
+						},
+					},
+				},
+				type = 'statement',
+				rank = claim.rank or 'normal',
+			}
+		end
 	end
-	claimsJson = claimsJson .. ']'
 
-	local dataJson = '{"labels":' .. labelsJson .. ',"claims":' .. claimsJson .. '}'
+	-- Only include non-empty parts: JSON:encode would serialize an empty Lua
+	-- table as [] (array), but the API expects "labels" to be an object.
+	local dataTable = {}
+	if next(labels) ~= nil then
+		dataTable.labels = labels
+	end
+	if #claims > 0 then
+		dataTable.claims = claims
+	end
+	if next(dataTable) == nil then
+		return nil -- nothing valid to send; treat as no-op
+	end
+	local dataJson = JSON:encode(dataTable)
+
 	local arguments = {
 		action = 'wbeditentity',
 		id = 'M' .. pageID,
@@ -445,46 +518,60 @@ end
 function MediaWikiApi.upload(fileName, sourceFilePath, text, comment, ignoreWarnings)
 	local sourceFileName = LrPathUtils.leafName(sourceFilePath)
 
-	local arguments = {
-		action = 'upload',
-		filename = fileName,
-		text = text,
-		comment = comment,
-		token = MediaWikiApi.getEditToken(),
-		format = 'xml',
-	}
-	if ignoreWarnings then
-		arguments.ignorewarnings = 'true'
-	end
 	local requestHeaders = {
 		{
 			field = 'User-Agent',
 			value = MediaWikiApi.userAgent,
 		},
 	}
-	local requestBody = {}
-	for key, value in pairs(arguments) do
-		requestBody[#requestBody + 1] = {
-			name = key,
-			value = value,
+
+	-- The multipart upload does not go through performRequest, so it needs its
+	-- own one-time retry on a stale CSRF token (long batches can outlive it).
+	local resultXml
+	for attempt = 1, 2 do
+		local arguments = {
+			action = 'upload',
+			filename = fileName,
+			text = text,
+			comment = comment,
+			token = MediaWikiApi.getEditToken(),
+			format = 'xml',
 		}
-	end
-	requestBody[#requestBody + 1] = {
-		name = 'file',
-		fileName = sourceFileName,
-		filePath = sourceFilePath,
-		contentType = 'application/octet-stream',
-	}
+		if ignoreWarnings then
+			arguments.ignorewarnings = 'true'
+		end
+		local requestBody = {}
+		for key, value in pairs(arguments) do
+			requestBody[#requestBody + 1] = {
+				name = key,
+				value = value,
+			}
+		end
+		requestBody[#requestBody + 1] = {
+			name = 'file',
+			fileName = sourceFileName,
+			filePath = sourceFilePath,
+			contentType = 'application/octet-stream',
+		}
 
-	local resultBody, resultHeaders = LrHttp.postMultipart(MediaWikiApi.apiPath, requestBody, requestHeaders)
+		local resultBody, resultHeaders = LrHttp.postMultipart(MediaWikiApi.apiPath, requestBody, requestHeaders)
 
-	if resultHeaders.status ~= 200 then
-		MediaWikiApi.httpError(resultHeaders.status)
-	end
+		if resultHeaders.status ~= 200 then
+			MediaWikiApi.httpError(resultHeaders.status)
+		end
 
-	local resultXml = MediaWikiApi.parseXmlDom(LrXml.parseXml(resultBody))
-	if resultXml.error then
-		MediaWikiApi.mediaWikiError(resultXml.error.code, resultXml.error.info)
+		resultXml = MediaWikiApi.parseXmlDom(LrXml.parseXml(resultBody))
+		if resultXml.error then
+			local code = resultXml.error.code
+			if attempt == 1 and (code == 'badtoken' or code == 'invalid-csrf-token') then
+				MediaWikiUtils.trace('Upload: CSRF token invalid, fetching fresh token and retrying...')
+				MediaWikiApi.clearEditToken()
+			else
+				MediaWikiApi.mediaWikiError(resultXml.error.code, resultXml.error.info)
+			end
+		else
+			break -- success (or warning), leave the retry loop
+		end
 	end
 
 	local uploadResult = resultXml.upload.result

@@ -50,6 +50,10 @@ return {
 			file = "ToolGenerateFromPersons.lua",
 		},
 		{
+			title = "🏷️ Edit Structured Data (SDC)",
+			file = "ToolEditSdc.lua",
+		},
+		{
 			title = "📄 Set title to file prefix and headline",
 			file = "ToolSetTitleToPrefixAndHeadline.lua",
 		},

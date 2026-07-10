@@ -18,18 +18,18 @@ local metadataProvider = require 'MediaWikiMetadataProvider'
 
 -- Functions -------------------------------------------------------------------
 
-local function searchAndReplaceMetadata( photo, metadataName, searchStr, replaceStr )
-    local filename = string.sub( tostring(photo:getFormattedMetadata('fileName')),  0, -5)
-    --underscore, num, oldlabel = string.match(filename, 'MJK(_*)(%d*)(.*)')
+-- Treat user input literally, not as a Lua pattern: escape all pattern magic
+-- characters in the search string. Without this, a search ending in "%"
+-- (e.g. "50%") or containing an unmatched "[" throws a runtime error
+-- mid-batch, and characters such as ( ) . * + - ? ^ $ silently change the
+-- matching semantics (e.g. "(Test)" never matches the literal text).
+local function escapePattern(s)
+    return (s:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+end
 
-    replaceStr = replaceStr or ""
-    
-    local str = photo:getPropertyForPlugin( _PLUGIN, 'metadataName')
-    str = str:gsub(searchStr, replaceStr)
-
-    photo:getPropertyForPlugin( _PLUGIN, 'metadataName', str)
-
-    return str
+-- In the replacement string only '%' is special (%0, %1, ...); escape it.
+local function escapeReplacement(s)
+    return (s:gsub('%%', '%%%%'))
 end
 
 local LrView = import "LrView"
@@ -100,6 +100,15 @@ LrFunctionContext.callWithContext( 'dialogExample', function( context )
 
     if inputOk ~= "cancel" then
 
+        -- Guard: an empty search string would make gsub insert the
+        -- replacement between every character of every field.
+        if MediaWikiUtils.isStringEmpty(props.str) then
+            LrDialogs.message("Search and Replace", "The search string is empty – nothing to do.", "info")
+            return
+        end
+        local searchPattern = escapePattern(props.str)
+        local replacement = escapeReplacement(props.replaceStr or '')
+
         local catalog = LrApplication.activeCatalog()
         local photo = catalog:getTargetPhoto()
         local photos = catalog:getTargetPhotos()
@@ -114,7 +123,7 @@ LrFunctionContext.callWithContext( 'dialogExample', function( context )
                     for key,md in pairs(metadataProvider.metadataFieldsForPhotos) do
                         v = photo:getPropertyForPlugin( _PLUGIN, md.id )
                         if v ~= nil then
-                            v = v:gsub(props.str, props.replaceStr)   
+                            v = v:gsub(searchPattern, replacement)
                             photo:setPropertyForPlugin( _PLUGIN, md.id, v )
                         end
                     end

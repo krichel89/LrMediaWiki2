@@ -61,6 +61,10 @@ MediaWikiInterface.loadFileDescriptionTemplate = function(templateName)
 end
 
 MediaWikiInterface.prepareUpload = function(username, password, apiPath, templateName)
+	-- Never send credentials over unencrypted HTTP.
+	if apiPath and apiPath:lower():match('^http://') then
+		LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Interface/HttpsRequired=Insecure API path (http://): ^1^nPlease use https:// – otherwise username and password would be sent unencrypted.", apiPath))
+	end
 	-- MediaWiki login
 	if username and password then
 		MediaWikiInterface.username = username
@@ -125,7 +129,7 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 		if not caption or caption == '' then return '' end
 		local name = caption:match('^(.-)%s+at%s+')
 			or caption:match('^(.-)%s+bei%s+')
-			or caption:match('^(.-)%s+95p%s+') -- à
+			or caption:match('^(.-)%s+\195\160%s+') -- à
 			or caption:match('^(.-)%s+al%s+')
 			or caption:match('^(.-)%s+auf%s+')
 			or caption:match('^(.-)%s+sur%s+')
@@ -145,7 +149,7 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 	end
 
 	-- Try to read existing page content
-	local existingContent = MediaWikiApi.getPageContent(galleryName)
+	local existingContent, httpStatus = MediaWikiApi.getPageContent(galleryName)
 	if existingContent and type(existingContent) == 'string' then
 		local newContent
 		if existingContent:find(galleryClose, 1, true) then
@@ -158,10 +162,17 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 			newContent = existingContent:gsub('%s*$', '') .. '\n' .. newEntries .. galleryClose
 		end
 		MediaWikiApi.setPageContent(galleryName, newContent, comment)
-	else
-		-- Page does not exist: create fresh
+	elseif httpStatus == 404 then
+		-- Page really does not exist: create fresh
 		local text = galleryOpen .. '\n' .. newEntries .. galleryClose
 		MediaWikiApi.setPageContent(galleryName, text, comment)
+	else
+		-- Read failed for another reason (e.g. HTTP 429 right after a batch,
+		-- or a network error). Creating a "fresh" page now would OVERWRITE an
+		-- existing gallery, so skip the gallery update and tell the user.
+		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryReadFailed=Gallery page could not be read (HTTP status ^1). Gallery not updated to avoid overwriting it.", tostring(httpStatus))
+		MediaWikiUtils.trace(msg)
+		LrDialogs.showBezel(msg, 5)
 	end
 end
 
@@ -193,7 +204,10 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 				local newName = LOC "$$$/LrMediaWiki/Interface/Rename/NewName=New file name"
 				local newFileName = MediaWikiInterface.prompt(renameFile, newName, targetFileName)
 				if MediaWikiUtils.isStringFilled(newFileName) and newFileName ~= targetFileName then
-					MediaWikiInterface.uploadFile(filePath, description, hasDescription, newFileName, 'Standard')
+					-- Propagate the result: without "return", an upload error
+					-- after renaming would be silently swallowed and the file
+					-- would be reported as successfully uploaded.
+					return MediaWikiInterface.uploadFile(filePath, description, hasDescription, newFileName, 'Standard')
 				end
 				return
 			else -- Cancel
@@ -287,11 +301,25 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 
 	-- Extract structured data tags (key=value lines) from description_all
 	-- Only lines that START with key= are matched (avoids matching inside {{templates}})
-	-- Supported keys: caption_XX, creator, copyright, license
 	local structuredData = {}
-	local sdKeys = { 'caption_en', 'caption_de', 'caption_fr', 'caption_it',
-		'caption_es', 'caption_nl', 'caption_pl', 'caption_ru', 'caption_zh',
-		'creator', 'copyright', 'license', 'depicts' }
+	-- Dynamically extract ALL caption_XX= lines (any language code, including
+	-- subtags like zh-hant), so any caption language is published, not just a
+	-- fixed set. A line is only treated as a caption if it starts at the very
+	-- beginning of a line; everything else is kept verbatim as freetext.
+	do
+		local keptLines = {}
+		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do
+			local lang, val = line:match('^caption_([%a][%w%-]*)=(.*)$')
+			if lang then
+				structuredData['caption_' .. lang:lower()] = MediaWikiUtils.trim(val)
+			else
+				keptLines[#keptLines + 1] = line
+			end
+		end
+		descriptionAll = table.concat(keptLines, '\n')
+	end
+	-- Non-caption keys are extracted line-anchored as before.
+	local sdKeys = { 'creator', 'copyright', 'license', 'depicts', 'created_during' }
 	for _, key in ipairs(sdKeys) do
 		local value
 		-- Check at start of string
@@ -410,6 +438,10 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	end
 
 	-- Substitution of placeholders
+	-- Keep the infobox template placeholders built above (Artwork /
+	-- Object photo); the reassignment below would otherwise discard them
+	-- and e.g. <artArtist> would never be substituted.
+	local infoboxArguments = arguments
 	arguments = {
 		fileName = photo:getFormattedMetadata('fileName'),
 		copyName = photo:getFormattedMetadata('copyName'),
@@ -503,6 +535,12 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 		keywordTags = photo:getFormattedMetadata('keywordTags'),
 		keywordTagsForExport = photo:getFormattedMetadata('keywordTagsForExport'),
 	}
+
+	-- Merge the infobox template placeholders back in (no key collisions:
+	-- they are all prefixed art* / object / detail / detailPosition).
+	for k, v in pairs(infoboxArguments) do
+		arguments[k] = v
+	end
 
 	arguments.creationDate = ''
 	arguments.creationLongDate = ''
@@ -615,20 +653,28 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 
 	-- Search for placeholders which are not substituted by a filled variable.
 	-- A typical error is an empty variable.
-	-- Another error can be caused by a faulty placeholder name, e. g. <personsShown> instead of <personShown>,
-	local success
-	local placeholder = wikitext:match("<%a+>") -- a pattern starting with "<", multiple ASCII chars, ending with ">"
-	if placeholder then
-		if placeholder == '<br>' or placeholder == '<hr>' then -- These are no placeholders.
-			success = true
-		else
+	-- Another error can be caused by a faulty placeholder name, e. g. <personsShown> instead of <personShown>.
+	-- Plain HTML/wikitext tags of the form <tag> are NOT placeholders and must
+	-- not abort the export; they are whitelisted here. (Tags with attributes,
+	-- e.g. <gallery mode="...">, never match the pattern <%a+> anyway.)
+	local allowedTags = {
+		br = true, hr = true, ref = true, references = true, gallery = true,
+		nowiki = true, small = true, big = true, sub = true, sup = true,
+		u = true, s = true, i = true, b = true, code = true, pre = true,
+		poem = true, center = true, span = true, div = true, p = true,
+		math = true, score = true, includeonly = true, noinclude = true,
+		onlyinclude = true, syntaxhighlight = true,
+	}
+	local success = true
+	for tag in wikitext:gmatch('<(%a+)>') do
+		if not allowedTags[tag:lower()] then
+			local placeholder = '<' .. tag .. '>'
 			message = LOC("$$$/LrMediaWiki/Interface/PlaceholderErrorMessage=The placeholder ^1 was not replaced.", placeholder)
 			local info = LOC("$$$/LrMediaWiki/Interface/PlaceholderErrorInfo=File: ^1", arguments.fileName)
 			LrDialogs.message(message, info, "critical")
 			success = false
+			break
 		end
-	else
-		success = true
 	end
 
 	-- Attach structured data to arguments for use by caller
@@ -652,10 +698,14 @@ MediaWikiInterface.wbSetStructuredData = function(exportFields, fileName)
 	if MediaWikiUtils.isStringFilled(captionEn) then
 		labelsTable['en'] = captionEn
 	end
-	local captionLangs = { 'de', 'fr', 'it', 'es', 'nl', 'pl', 'ru', 'zh' }
-	for _, lang in ipairs(captionLangs) do
-		local val = sd['caption_' .. lang]
-		if MediaWikiUtils.isStringFilled(val) then
+	-- Add every other caption_XX field as a label (any language code), so any
+	-- caption language is published, not just a fixed set. 'en' is already
+	-- handled above (incl. the exportFields.caption_en fallback).
+	-- Note: the language code must be a valid MediaWiki/Wikibase language code;
+	-- an invalid code would make the whole wbeditentity call fail.
+	for key, val in pairs(sd) do
+		local lang = key:match('^caption_(.+)$')
+		if lang and lang ~= 'en' and MediaWikiUtils.isStringFilled(val) then
 			labelsTable[lang] = val
 		end
 	end
@@ -670,6 +720,9 @@ MediaWikiInterface.wbSetStructuredData = function(exportFields, fileName)
 	end
 	if MediaWikiUtils.isStringFilled(sd.license) then
 		claimsTable[#claimsTable + 1] = { property = 'P275', value = sd.license }
+	end
+	if MediaWikiUtils.isStringFilled(sd.created_during) then
+		claimsTable[#claimsTable + 1] = { property = 'P10408', value = sd.created_during }
 	end
 	if MediaWikiUtils.isStringFilled(sd.depicts) then
 		for qid in sd.depicts:gmatch('[^,]+') do
