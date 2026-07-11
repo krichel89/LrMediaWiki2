@@ -730,18 +730,38 @@ MediaWikiInterface.wbSetStructuredData = function(exportFields, fileName)
 	end
 
 	-- Build claims table
+	-- Every QID value may carry an inline comment for readability
+	-- ("Q124692383 # Berlinale 2026"). The comment must be stripped before the
+	-- value reaches the API, otherwise it fails the ^Q%d+$ check in
+	-- MediaWikiApi.wbEditEntity and the claim is silently dropped.
+	local function bareQid(value)
+		if not MediaWikiUtils.isStringFilled(value) then
+			return nil
+		end
+		local qid = value:match('^([^#]+)') or value
+		qid = MediaWikiUtils.trim(qid)
+		if MediaWikiUtils.isStringFilled(qid) then
+			return qid
+		end
+		return nil
+	end
+
 	local claimsTable = {}
-	if MediaWikiUtils.isStringFilled(sd.creator) then
-		claimsTable[#claimsTable + 1] = { property = 'P170', value = sd.creator }
+	local creatorQid = bareQid(sd.creator)
+	if creatorQid then
+		claimsTable[#claimsTable + 1] = { property = 'P170', value = creatorQid }
 	end
-	if MediaWikiUtils.isStringFilled(sd.copyright) then
-		claimsTable[#claimsTable + 1] = { property = 'P6216', value = sd.copyright }
+	local copyrightQid = bareQid(sd.copyright)
+	if copyrightQid then
+		claimsTable[#claimsTable + 1] = { property = 'P6216', value = copyrightQid }
 	end
-	if MediaWikiUtils.isStringFilled(sd.license) then
-		claimsTable[#claimsTable + 1] = { property = 'P275', value = sd.license }
+	local licenseQid = bareQid(sd.license)
+	if licenseQid then
+		claimsTable[#claimsTable + 1] = { property = 'P275', value = licenseQid }
 	end
-	if MediaWikiUtils.isStringFilled(sd.created_during) then
-		claimsTable[#claimsTable + 1] = { property = 'P10408', value = sd.created_during }
+	local createdDuringQid = bareQid(sd.created_during)
+	if createdDuringQid then
+		claimsTable[#claimsTable + 1] = { property = 'P10408', value = createdDuringQid }
 	end
 	if MediaWikiUtils.isStringFilled(sd.depicts) then
 		for token in sd.depicts:gmatch('[^,;]+') do

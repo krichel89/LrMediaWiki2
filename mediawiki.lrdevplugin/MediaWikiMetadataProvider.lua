@@ -21,7 +21,7 @@ return {
 		{
 			id = 'caption_en',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEnTooltip=Caption (en)^n^nA short description in English",
+			title = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -29,7 +29,7 @@ return {
 		{
 			id = 'depicts',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/DepictsTooltip=Depicts (P180)^n^nWikidata QIDs of what is shown, comma-separated (e.g. Q640, Q42). Published as SDC statements (P180). A value here overrides any depicts= line in “Wikitext”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -37,7 +37,7 @@ return {
 		{
 			id = 'created_during',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/CreatedDuringTooltip=Created during (P10408)^n^nWikidata QID of the event the photo was created during (e.g. Q124692383). Published as an SDC statement (P10408). A value here overrides the export dialog default and any created_during= line in “Wikitext”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/CreatedDuring=Created during (P10408)",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -45,7 +45,7 @@ return {
 		{
 			id = 'description_en',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionEn=Description (en)^n^nEnglish description. At export it is wrapped as {{en|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionEnLabel=Description (en)",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -53,7 +53,7 @@ return {
 		{
 			id = 'description_de',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionDe=Description (de)^n^nGerman description. At export it is wrapped as {{de|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionDeLabel=Description (de)",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -61,15 +61,15 @@ return {
 		{
 			id = 'description_all',
 			version = 10,
-			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionAllTooltip=Wikitext^n^nFull Wikitext description for this file. Enter the complete wikitext including templates, license, categories etc. Categories can also be entered as [[Category:Name]] and will be merged with categories from the export dialog.",
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Wikitext",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
 		},
-				{
+		{
 			id = 'categories',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/CategoriesTooltip=Categories^n^nThe categories all uploaded images should be added to; without the prefix “Category:” and without square brackets [[…]]. Multiple categories are separated by a ; (semicolon).",
+			title = LOC "$$$/LrMediaWiki/Metadata/Categories=Categories",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -78,7 +78,7 @@ return {
 		{
 			id = 'artist',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/ArtistTooltip=Artist^n^nArtist who created the original artwork. Use {{Creator:Name Surname}} with {{Creator}} template whenever possible. Use either “Artist” or “Author”, not both.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Artist=Artist",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -86,7 +86,7 @@ return {
 		{
 			id = 'title',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/TitleTooltip=Title^n^nTitle of the artwork. If the artwork has no title, use a description field.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Title=Title",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -94,7 +94,7 @@ return {
 		{
 			id = 'medium',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/MediumTooltip=Medium^n^nMedium (technique and materials) used to create artwork",
+			title = LOC "$$$/LrMediaWiki/Metadata/Medium=Medium",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -102,7 +102,7 @@ return {
 		{
 			id = 'dimensions',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/DimensionsTooltip=Dimensions^n^nDimensions of the artwork. Please use {{Size}} formatting template.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Dimensions=Dimensions",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -110,7 +110,7 @@ return {
 		{
 			id = 'institution',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/InstitutionTooltip=Institution^n^nGallery, museum or collection owning the piece. Will be shown together with field “Department” as “Current location”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Institution=Institution",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -118,7 +118,7 @@ return {
 		{
 			id = 'department',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/DepartmentTooltip=Department^n^nDepartment or location within the museum or gallery",
+			title = LOC "$$$/LrMediaWiki/Metadata/Department=Department",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -126,7 +126,7 @@ return {
 		{
 			id = 'accessionNumber',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/AccessionNumberTooltip=Accession Number^n^nMuseum’s accession number or some other inventory or identification number",
+			title = LOC "$$$/LrMediaWiki/Metadata/AccessionNumber=Accession Number",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -134,7 +134,7 @@ return {
 		{
 			id = 'placeOfCreation',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/PlaceOfCreationTooltip=Place of Creation",
+			title = LOC "$$$/LrMediaWiki/Metadata/PlaceOfCreation=Place of Creation",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -142,7 +142,7 @@ return {
 		{
 			id = 'placeOfDiscovery',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/PlaceOfDiscoveryTooltip=Place of Discovery^n^nPlace of discovery or location where given object was found. This field mostly makes sense with archeological artifacts.",
+			title = LOC "$$$/LrMediaWiki/Metadata/PlaceOfDiscovery=Place of Discovery",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -150,7 +150,7 @@ return {
 		{
 			id = 'objectHistory',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/ObjectHistoryTooltip=Object History^n^nProvenance (history of artwork ownership). Use {{ProvenanceEvent}}, {{Discovered}} and other similar templates.",
+			title = LOC "$$$/LrMediaWiki/Metadata/ObjectHistory=Object History",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -158,7 +158,7 @@ return {
 		{
 			id = 'exhibitionHistory',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/ExhibitionHistoryTooltip=Exhibition History^n^nExhibition history, {{Temporary Exhibition}}",
+			title = LOC "$$$/LrMediaWiki/Metadata/ExhibitionHistory=Exhibition History",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -166,7 +166,7 @@ return {
 		{
 			id = 'creditLine',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/CreditLineTooltip=Credit Line^n^nDescribes how the artwork came into the museum’s collection, or how it came to be on view at the museum",
+			title = LOC "$$$/LrMediaWiki/Metadata/CreditLine=Credit Line",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -174,7 +174,7 @@ return {
 		{
 			id = 'inscriptions',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/InscriptionsTooltip=Inscriptions^n^nDescription of: inscriptions, watermarks, captions, coats of arm, etc. Use {{inscription}}.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Inscriptions=Inscriptions",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -182,7 +182,7 @@ return {
 		{
 			id = 'notes',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/NotesTooltip=Notes^n^nAdditional information about the artwork and its history",
+			title = LOC "$$$/LrMediaWiki/Metadata/Notes=Notes",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -190,7 +190,7 @@ return {
 		{
 			id = 'references',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/ReferencesTooltip=References^n^nBooks and websites with information about the artwork. Please use {{Cite book}} and {{Cite web}} templates.",
+			title = LOC "$$$/LrMediaWiki/Metadata/References=References",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -198,7 +198,7 @@ return {
 		{
 			id = 'wikidata',
 			version = 2,
-			title = LOC "$$$/LrMediaWiki/Metadata/WikidataTooltip=Wikidata^n^nID of the Wikidata item about the artwork (if any)",
+			title = LOC "$$$/LrMediaWiki/Metadata/Wikidata=Wikidata",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -207,7 +207,7 @@ return {
 		{
 			id = 'object',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/ObjectTooltip=Object^n^nName of the category with the object description",
+			title = LOC "$$$/LrMediaWiki/Metadata/Object=Object",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -215,7 +215,7 @@ return {
 		{
 			id = 'detail',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/DetailTooltip=Detail^n^nWrite “yes” if you want a message “This photograph shows a detail …” to be displayed before the section “Object”. You can also explain what is shown in the detail, it will both display the message and explain what detail it is in the “Description” field of the section “Photograph”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/Detail=Detail",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -223,7 +223,7 @@ return {
 		{
 			id = 'detailPosition',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/DetailPositionTooltip=Detail Position^n^nPosition of the detail on the object",
+			title = LOC "$$$/LrMediaWiki/Metadata/DetailPosition=Detail Position",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,

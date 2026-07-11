@@ -1,5 +1,58 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.12 (July 2026)
+
+**Fixes: created_during (and creator/copyright/license) from the Wikitext
+field were silently dropped when they carried an inline comment.**
+
+Cause: the "# comment" stripping added in 2.0.7 was only applied to `depicts`,
+not to the other four QID fields. A value like
+`created_during=Q124692383 # Berlinale 2026` therefore reached
+MediaWikiApi.wbEditEntity unstripped, failed its `^Q%d+$` validation, and the
+claim was skipped without an error message - which is exactly why depicts
+worked and created_during did not. All four QID fields (P170, P6216, P275,
+P10408) now go through the same comment-stripping helper. Covered by tests,
+including a regression test proving the old behaviour failed validation.
+
+**Fixes the cluttered Synchronize Metadata dialog** (an extra, field-less
+text line under every field).
+
+Cause: 25 of the 26 fields packed BOTH the label and the help text into the
+`title`, separated by `^n^n` ("Caption (en)^n^nA short description in
+English"). That is a known Lightroom workaround - the SDK has no separate
+tooltip attribute for metadata fields, so the long string in the provider
+serves as the tooltip while the plug-in's own metadata sets supply the short
+label. The Synchronize dialog does not use those sets, so it rendered the
+whole string, producing a second line with no input field.
+
+Fix: all 26 field titles are now the short label only (reusing the label keys
+the metadata sets already define, so all German translations are in place -
+verified). Trade-off, stated plainly: the long help texts in the Metadata
+panel are gone. Keeping both is not possible in the SDK. No `version` bump was
+needed - Lightroom refreshes the title from the provider (proven: "Wikitext"
+already showed up correctly under the old label in the catalogue), so no field
+values are at risk.
+
+Also repaired: a broken indentation in the 'categories' field block.
+
+**Fixes the export abort "Attempt to access property otherFields not declared
+in Info.lua"** - a regression introduced in 2.0.10.
+
+Cause: 2.0.10 added a per-file override that read the 'otherFields' property.
+That field exists in the ORIGINAL LrMediaWiki (and therefore in old catalogs),
+but this fork does not declare it in MediaWikiMetadataProvider.lua - the
+Artwork / Object photo metadata sets were dropped along the way. Reading an
+undeclared property is a hard error and aborts the whole export.
+
+Fix: the per-file override was removed. "Other fields" is now purely a
+batch-level field of the export dialog (as originally requested); its tooltip
+and the German translation no longer promise a per-file override.
+
+Audited at the same time: every get/setPropertyForPlugin call in the plug-in
+was checked against the declared field list. No other access to an undeclared
+field remains (the dynamic 'description_' .. lang access only ever resolves to
+description_en / description_de, both declared).
+
 ## Version 2.0.11 (July 2026)
 
 **Fixes the Windows catalog error "Could not upgrade your catalog for plug-in

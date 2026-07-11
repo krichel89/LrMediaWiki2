@@ -108,13 +108,12 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 		exportFields.caption_en = captionEn
 	end
 
-	-- Field "Other fields" (per-file override of the export dialog default;
-	-- this is the "Other fields" field from the Artwork / Object photo
-	-- Metadata panel sets, e.g. "{{Credit line|Author=...|Other=...}}").
-	local otherFieldsPerFile = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'otherFields')
-	if MediaWikiUtils.isStringFilled(otherFieldsPerFile) then
-		exportFields.other_fields = otherFieldsPerFile
-	end
+	-- NOTE: "Other fields" is a batch-level field of the export dialog only
+	-- (exportFields.other_fields, set in fillFieldsByFile from propertyTable).
+	-- There is deliberately NO per-file override here: this fork does not
+	-- declare an 'otherFields' metadata field, and reading an undeclared
+	-- property raises "Attempt to access property ... not declared in
+	-- Info.lua" and aborts the export.
 
 	-- Field "description_all" – single freetext Wikitext field
 	local descriptionAll = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'description_all') or ''
@@ -742,7 +741,7 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 	local authorTooltip = LOC "$$$/LrMediaWiki/Metadata/AuthorTooltip=Author^n^nRequired field, if not “Artwork” has been chosen (“Artwork” recommends to use “Artist” or “Author”).^nShould be set per file or at export dialog. Setting per file has priority over setting at export dialog. Example:^n  [[User:MyUserName|MyRealName]]"
 	local permissionTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/PermisssionTooltip=Permission^n^nPermission information like {{PermissionOTRS}}. Either this field or “License” should be set."
 	local otherTemplatesTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherTemplatesTooltip=Other Templates^n^nOther templates are inserted after the infobox template and before the licensing section. Examples:^n  {{Panorama}}^n  {{Personality rights}}^n  {{Location estimated}}"
-	local otherFieldsTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Other fields^n^nBatch default for extra wikitext/templates inserted after the infobox template (same position as Other Templates). A value in the “Other fields” field of the Artwork / Object photo Metadata panel overrides this default for that one photo."
+	local otherFieldsTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Other fields^n^nExtra wikitext/templates inserted after the infobox template (same position as Other Templates). Applies to all files of this export. Examples:^n  {{Credit line}}^n  {{Information field}}"
 	local licenseTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/LicenseTooltip=License^n^nThe license template to use, e.g. {{Cc-by-sa-4.0}}. Either this field or “Permission” should be set."
 	local categoriesTooltip = LOC "$$$/LrMediaWiki/Metadata/CategoriesTooltip=Categories^n^nThe categories all uploaded images should be added to; without the prefix “Category:” and without square brackets [[…]]. Multiple categories are separated by a ; (semicolon)."
 	local galleryTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/GalleryTooltip=Gallery^n^nIf this field is set, a gallery of your uploads will be added to the page with the specified title. Current date related placeholders are recognized. Example:^n  User:MyUserName/My Uploads at <currentLongDate>"

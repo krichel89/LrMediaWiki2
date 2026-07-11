@@ -249,4 +249,4 @@
 "$$$/LrMediaWiki/Interface/GalleryReadFailed=Galerie-Seite konnte nicht gelesen werden (HTTP-Status ^1). Galerie nicht aktualisiert, um sie nicht zu überschreiben."
 "$$$/LrMediaWiki/Metadata/DescriptionAll=Wikitext"
 "$$$/LrMediaWiki/Section/UploadInformation/OtherFields=Andere Felder"
-"$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Andere Felder^n^nBatch-Standardwert für zusätzlichen Wikitext/Templates, die nach der Infobox eingefügt werden (gleiche Stelle wie „Andere Templates“). Ein Wert im Feld „Andere Felder“ der Metadaten-Sets Artwork/Object photo überschreibt diesen Standardwert für dieses eine Foto."
+"$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Andere Felder^n^nZusätzlicher Wikitext/Templates, die nach der Infobox eingefügt werden (gleiche Stelle wie „Andere Templates“). Gilt für alle Dateien dieses Exports. Beispiele:^n  {{Credit line}}^n  {{Information field}}"
