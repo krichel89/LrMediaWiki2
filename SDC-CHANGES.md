@@ -58,7 +58,7 @@ demonstrably work in this Lightroom installation:
    static_text), and `visible` on row containers is ignored – which is why
    the result buttons stayed invisible. New: results appear in a **dropdown
    with bound items** (this mechanism demonstrably worked in 2.0.7), the
-   first hit is **preselected**, and "⬅ Übernehmen" (static title, proven)
+   first hit is **preselected**, and "Übernehmen" (static title, proven)
    takes it over – the common case remains a SINGLE click. A direct click
    on a list entry cannot be implemented reliably in the LrView SDK: there
    is no list control, the selection observer was demonstrably unreliable
@@ -68,14 +68,14 @@ demonstrably work in this Lightroom installation:
    non-layout properties of their own according to the SDK docs. VERIFY:
    control-level visible is still untested in this installation; if the
    empty rows are still visible, the fallback is to show all 12 rows
-   permanently and remove ➕ – please report back.
+   permanently and remove + – please report back.
 
 ## Version 2.0.8 (July 2026)
 
 1. **Search results as a clickable list in the dialog** (instead of a
    dropdown): after 0.6 s of typing rest, up to 5 hits appear as buttons
    directly below the search field ("Label – description (QID)"); **one
-   click takes it over**. No ✚ button, no dropdown, no selection observer –
+   click takes it over**. No "plus" button, no dropdown, no selection observer –
    the unreliable click observer from 2.0.7 was replaced. (A popup_menu
    cannot be opened programmatically via the SDK; the open button list is
    the desired behavior.) — superseded by 2.0.9, see above.
@@ -87,7 +87,7 @@ demonstrably work in this Lightroom installation:
    `Q6938433 # CC0`. The export still strips `# …` before uploading.
 3. **Color highlighting removed** (LrColor/text_color gone).
 4. **Languages as free ISO code fields:** the first 4 slots are pre-filled
-   with en/de/fr/it; "➕ Sprache" reveals an **empty** slot, the code is
+   with en/de/fr/it; "+ Sprache" reveals an **empty** slot, the code is
    typed by hand (12 slots total). Parsed captions in further languages are
    distributed onto the slots automatically (alphabetically); with more
    than 12 languages, surplus caption_XX= lines are preserved losslessly
@@ -103,10 +103,10 @@ ToolEditSdc.lua was rewritten from scratch in this version.
    `scrolled_view`, min. 80 px height + scroll bars). Instead the **label
    texts** of the QID fields were colored – removed again in 2.0.8 on
    request.
-2. **➕ Sprache adds up to 12 languages** beyond the initial 4
+2. **+ Sprache adds up to 12 languages** beyond the initial 4
    (en/de/fr/it/es/nl/pl/ru/zh/pt/ja/uk) – replaced by free ISO code
    fields in 2.0.8.
-3. **Click on a search result takes it over directly** (no ✚ button) via an
+3. **Click on a search result takes it over directly** (no "plus" button) via an
    observer on the dropdown selection with a guard flag – proved unreliable
    in practice, replaced in 2.0.8/2.0.9.
 4. **QID comments:** a search result is entered as `Q640 # Harald Krichel`;
@@ -130,14 +130,14 @@ ToolEditSdc.lua was rewritten from scratch in this version.
 3. **Layout:** QID field and search field on one row each; the result
    dropdown uses the full width below (depicts and created during).
 4. **Only 5 languages** in the caption dropdown (en, de, fr, it, es; 4
-   visible, ➕ reveals the fifth) – superseded in 2.0.7/2.0.8.
-5. **New button "⬇ Captions → Wikitext":** takes all filled captions as
+   visible, + reveals the fifth) – superseded in 2.0.7/2.0.8.
+5. **New button "Captions -> Wikitext":** takes all filled captions as
    `{{lang|1=…}}` blocks to the beginning of the wikitext field
    (idempotent: identical blocks and duplicate languages are skipped); the
    captions themselves remain untouched as SDC labels.
 6. **Rename: "Description (all)" is now called "Wikitext" everywhere** –
    set title "LrMediaWiki – Wikitext", field label, menu entry
-   ("🔁 Description fields ↔ Wikitext"), tooltips, translation. The field
+   ("Description fields ↔ Wikitext"), tooltips, translation. The field
    ID `description_all` is unchanged (no schema bump, no data migration).
 
 ## Version 2.0.5 (July 2026)
@@ -158,7 +158,7 @@ ToolEditSdc.lua was rewritten from scratch in this version.
 - Tools registered under Library > Plug-in Extras (LrLibraryMenuItems), so
   the SDC editor and the converter are reachable from the Library module
   (e.g. for a macOS Shortcuts app command; exact menu title:
-  "🏷️ Edit Structured Data (SDC)").
+  "Edit Structured Data (SDC)").
 
 ## Version 2.0.3 (July 2026)
 

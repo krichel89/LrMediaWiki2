@@ -13,7 +13,7 @@ return {
 	LrSdkVersion = 6.0,
 	LrSdkMinimumVersion = 4.0,
 	LrToolkitIdentifier = 'org.ireas.lightroom.mediawiki',
-	LrPluginName = 'LrMediaWiki',
+	LrPluginName = 'LrMediaWiki2',
 
 	LrInitPlugin = 'MediaWikiInit.lua',
 

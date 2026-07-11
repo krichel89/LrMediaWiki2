@@ -559,6 +559,38 @@ LrFunctionContext.callWithContext('LrMediaWikiEditSdc', function(context)
 				fill_horizontal = 1,
 				width_in_chars = 44,
 			},
+			f:push_button {
+				title = 'Kategorien -> Wikitext',
+				-- Appends the categories as [[Category:...]] lines to the end of
+				-- the wikitext field. Idempotent (a line already present is not
+				-- added twice). The export deduplicates categories from the
+				-- 'categories' field and from manual [[Category:]] lines anyway,
+				-- so this never produces duplicates on Commons.
+				action = function()
+					local lines = {}
+					local ft = props.freetext or ''
+					for cat in (props.categories or ''):gmatch('[^;]+') do
+						cat = trim(cat)
+						-- Tolerate a pasted-in "[[Category:X]]" as well as a bare "X"
+						cat = cat:match('^%[%[Category:(.-)%]%]$') or cat
+						cat = trim(cat)
+						if cat ~= '' then
+							local line = '[[Category:' .. cat .. ']]'
+							if not ft:find(line, 1, true) then
+								lines[#lines + 1] = line
+							end
+						end
+					end
+					if #lines > 0 then
+						local block = table.concat(lines, '\n')
+						if trim(ft) == '' then
+							props.freetext = block
+						else
+							props.freetext = ft .. '\n' .. block
+						end
+					end
+				end,
+			},
 		},
 
 		f:spacer { height = 10 },

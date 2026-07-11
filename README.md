@@ -1,209 +1,186 @@
 # LrMediaWiki2
 
-**MediaWiki Plugin für Adobe Lightroom Classic** mit umfassender Unterstützung für **Wikimedia Commons Structured Data (SDC)** und multisprachigen Beschreibungen.
+**MediaWiki-Plugin für Adobe Lightroom Classic** mit Unterstützung für **Wikimedia Commons Structured Data (SDC)** und mehrsprachige Beschreibungen.
 
-LrMediaWiki2 ist ein Fork mit vollständiger Refaktorierung der ursprünglichen [LrMediaWiki](https://commons.wikimedia.org/wiki/Commons:LrMediaWiki)-Codebase, optimiert für moderne Commons-Workflows mit Wikidata-Integration.
+LrMediaWiki2 ist ein Fork der ursprünglichen [LrMediaWiki](https://commons.wikimedia.org/wiki/Commons:LrMediaWiki)-Codebasis, ausgerichtet auf Commons-Workflows mit Wikidata-Integration.
 
 ---
 
-## ✨ Hauptmerkmale (v2.0.0)
+## Hauptmerkmale
 
-### **Structured Data (SDC) Fields via `description_all`**
+### Structured Data (SDC) über das Wikitext-Feld
 
-**Neu in v2.0:** Die meisten SDC-Felder können direkt über einfache Key=Value-Paare im `description_all`-Feld beschrieben werden:
+SDC-Aussagen werden als einfache `key=value`-Zeilen im Feld **Wikitext** (Feld-ID `description_all`) geschrieben:
 
-- `caption_en`, `caption_de`, `caption_fr`, `caption_it` – Multilingual Captions (P2096)
-- `creator` – Quelle/Urheber (P170, Wikidata Q-ID)
-- `depicts` – Porträt/Dargestellte Person (P180, Wikidata Q-ID)
-- `copyright` – Urheberrecht (P6216, Wikidata Q-ID)
-- `license` – Lizenz (P275, Wikidata Q-ID)
+- `caption_xx` – mehrsprachige Bildunterschriften (P2096), beliebige ISO-Codes
+- `depicts` – dargestellte Objekte/Personen (P180), mehrere QIDs mit Semikolon getrennt
+- `created_during` – Ereignis (P10408)
+- `creator` – Urheber (P170)
+- `copyright` – Urheberrechtsstatus (P6216)
+- `license` – Lizenz (P275)
 
-Diese werden automatisch extrahiert und via **Single-Call `wbeditentity`-API** in Commons SDC hochgeladen.
+Hinter jeder QID kann ein Kommentar zur Lesbarkeit stehen; er wird beim Upload abgeschnitten:
 
-### **Multilingual Wikitext Descriptions**
+```
+depicts=Q640 # Harald Krichel; Q42 # Douglas Adams
+```
 
-Vollständige Wikitext-Dateibeschreibungen mit Sprachvarianten:
+Alle Aussagen und Captions werden in einem einzigen `wbeditentity`-Aufruf publiziert, mit einer eigenen P180-Aussage je QID.
+
+### SDC-Editor
+
+Ein Dialog (Bibliothek → Zusatzmoduloptionen) mit Live-Suche auf Wikidata für Depicts und Created during, freien ISO-Code-Slots für Captions, einem Kategorien-Feld und dem freien Wikitext. Depicts können mit einem Haken auf die gesamte Auswahl übertragen werden (fehlende QIDs werden ergänzt, vorhandene bleiben erhalten).
+
+### Mehrsprachige Wikitext-Beschreibungen
 
 ```wikitext
 {{en|1=Description in English with [[links]]}}
 {{de|1=Beschreibung auf Deutsch mit [[Links]]}}
-{{fr|1=Description en français avec [[liens]]}}
 ```
 
-### **Templates & Categories**
+### Templates und Kategorien
 
-Automatische Integration von Custom Templates und Kategorien:
+Kategorien stammen aus dem Kategorien-Feld (semikolongetrennt), aus `#Hashtag`-Stichwörtern und aus manuell im Wikitext geschriebenen `[[Category:...]]`-Zeilen. Sie werden dedupliziert und ans Ende der Dateibeschreibung gestellt.
 
-```wikitext
-{{WikiPortraits Cannes Film Festival 2026}}
-[[Category:2026 Cannes Film Festival]]
-```
+### Metadaten-Sets
 
-### **Multi-Metadataset Support**
+Spezialisierte Sets für verschiedene Inhaltstypen: Wikitext, All Fields, Information, Information (DE), Artwork, Object Photo.
 
-Spezialisierte Metadatasets für verschiedene Inhaltstypen:
-- **General** – Universelle Dateien
-- **Artwork** – Kunstwerke (Artwork-Infobox)
-- **Object Photo** – Objektfotografie
-- **Information** + **Information (DE)** – Sprachvarianten
+### Weitere Werkzeuge
 
-### **Erweiterte Tools**
-
-Batch-Tools für komplexe Workflows:
-- 🔍 **Search and Replace Metadata** – Massenbearbeitung von Metadaten
-- 🔎 **Search and Replace Filename** – Dateinamen-Anpassung
-- 🚀 **Generate from Persons** – Auto-generierte Beschreibungen aus Wikimedia-Daten
-- 📄 **Set Title** – Automatische Titelformatierung
+- **Search and Replace Metadata** – Massenbearbeitung von Metadaten
+- **Search and Replace Filename** – Dateinamen-Anpassung
+- **Generate from Persons** – Beschreibungen aus Gesichtsregionen
+- **Set Title** – Titelformatierung
+- **Description fields ↔ Wikitext** – Konvertierung zwischen Einzelfeldern und Wikitext-Blöcken
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Anforderungen
 
-- **Adobe Lightroom Classic** 4.0 oder höher (Windows & macOS)
-- **Administrator-Zugang** zu einem MediaWiki-Installation (Standard: Wikimedia Commons)
-- **Wikidata-Kenntnisse** (für die Nutzung der Q-IDs in `description_all`)
+- **Adobe Lightroom Classic** (entwickelt und getestet gegen die aktuelle Version; `LrSdkVersion = 6.0`)
+- **Ein Benutzerkonto auf Wikimedia Commons** (oder einem anderen MediaWiki mit aktivierter Structured-Data-Erweiterung). Für den Upload werden lediglich die normalen Upload-Rechte eines angemeldeten Benutzers benötigt – **keine Administratorrechte**. Empfohlen wird ein [BotPassword](https://commons.wikimedia.org/wiki/Special:BotPasswords) statt des Hauptpassworts.
+- **Grundkenntnisse zu Wikidata-QIDs**, wenn SDC-Aussagen gesetzt werden sollen (die eingebaute Suche nimmt einem das Nachschlagen weitgehend ab)
 
-### Schritt-für-Schritt
+### Schritt für Schritt
 
-1. **Download** der neuesten Release (v2.0.0) von [GitHub Releases](https://github.com/krichel89/LrMediaWiki2/releases)
+1. **Download** der neuesten Version von [GitHub Releases](https://github.com/krichel89/LrMediaWiki2/releases) und entpacken.
 
-2. **Plugin-Datei** in dein Lightroom-Plugin-Verzeichnis kopieren:
-   
+2. **Plugin-Ordner** (`mediawiki.lrdevplugin`) in das Lightroom-Plugin-Verzeichnis kopieren:
+
    **Windows:**
    ```
-   C:\Users\[YourUsername]\AppData\Roaming\Adobe\Lightroom\Plugins\
+   C:\Users\[Benutzername]\AppData\Roaming\Adobe\Lightroom\Plugins\
    ```
-   
+
    **macOS:**
    ```
    ~/Library/Application Support/Adobe/Lightroom/Plugins/
    ```
 
-3. **Lightroom Classic neu starten**
+   Alternativ kann der Ordner an beliebiger Stelle liegen und im Zusatzmodul-Manager per „Hinzufügen" eingebunden werden.
 
-4. **Plugin aktivieren:**
-   - Edit → Preferences → Plugins
-   - "LrMediaWiki" aktivieren
+3. **Lightroom Classic neu starten** (nötig, damit neue Metadatenfelder und Metadaten-Sets registriert werden).
 
-5. **API-Zugangsdaten konfigurieren:**
-   - File → Plugin Manager → LrMediaWiki → MediaWiki/Commons credentials eingeben
-   - Bot- oder Benutzername und Passwort für Commons
+4. **Zugangsdaten konfigurieren:** Datei → Zusatzmodul-Manager → LrMediaWiki2 → Benutzername und Passwort (bzw. BotPassword) eintragen.
+
+5. **Metadaten-Set wählen:** Im Metadaten-Bedienfeld oben das Set „LrMediaWiki – Wikitext" (oder „All Fields") auswählen. Plugin-Felder erscheinen in der Standardansicht nicht automatisch; das ist normales Lightroom-Verhalten.
+
+### Hinweis zum Katalog-Schema
+
+Das Plugin registriert eigene Metadatenfelder mit einer `schemaVersion`. Lightroom hebt den Katalog beim ersten Start automatisch auf diese Version an. Ein **Downgrade ist nicht möglich**: Wird nach einer neueren Plugin-Version wieder eine ältere installiert, meldet Lightroom „Could not upgrade your catalog for plug-in metadata". In dem Fall die neuere Plugin-Version installieren – die Katalogdaten bleiben erhalten.
 
 ---
 
-## 📖 Verwendung
+## Verwendung
 
 ### Basis-Workflow
 
-1. **Foto in Lightroom auswählen**
+1. Fotos in Lightroom auswählen.
+2. Metadaten eingeben – entweder direkt im Metadaten-Bedienfeld oder komfortabler über den **SDC-Editor** (Bibliothek → Zusatzmoduloptionen).
+3. Export → MediaWiki: Zielwiki, Lizenz und Batch-Vorgaben setzen, Upload starten.
 
-2. **Metadaten eingeben** (Plugin Metadata Panel):
-   - **File caption (en)**: `Isaach de Bankolé at the 2026 Cannes Film Festival`
-   - **Description All**: Siehe Beispiel unten
-
-3. **Export → MediaWiki** (Export-Dialog)
-   - Zielwiki: Wikimedia Commons
-   - Lizenz: Auswählen
-   - **Dateiname & Upload starten**
-
-### `description_all`-Format (Praktisches Beispiel)
+### Format des Wikitext-Felds (Beispiel)
 
 ```
 caption_en=Isaach de Bankolé at the 2026 Cannes Film Festival
 caption_de=Isaach de Bankolé bei den Internationalen Filmfestspielen von Cannes 2026
 caption_fr=Isaach de Bankolé au Festival de Cannes 2026
-caption_it=Isaach de Bankolé al Festival di Cannes 2026
-creator=Q640
-depicts=Q1342843
-copyright=Q73566113
-license=Q18199165
-{{en|1=[[:en:Isaach de Bankolé|Isaach de Bankolé]] at a photo call for Kering Women in Motion at the [[:en:79th Cannes Film Festival|2026 Cannes Film Festival]]
-}}
-{{de|1=[[:de:Isaac de Bankolé|Isaach de Bankolé]] bei einem Photo-Call für Kering Women in Motion bei den [[:de:Internationale Filmfestspiele von Cannes 2026|Internationalen Filmfestspielen von Cannes 2026]]
-}}
+depicts=Q1342843 # Isaach de Bankolé
+created_during=Q124692383 # Cannes 2026
+creator=Q640 # Harald Krichel
+copyright=Q73566113 # copyrighted
+license=Q18199165 # CC BY-SA 4.0
+{{en|1=[[:en:Isaach de Bankolé|Isaach de Bankolé]] at a photo call at the [[:en:2026 Cannes Film Festival|2026 Cannes Film Festival]]}}
+{{de|1=[[:de:Isaach de Bankolé|Isaach de Bankolé]] bei einem Photo-Call bei den [[:de:Internationale Filmfestspiele von Cannes 2026|Internationalen Filmfestspielen von Cannes 2026]]}}
 {{WikiPortraits Cannes Film Festival 2026}}
 [[Category:Isaach de Bankolé]]
 [[Category:2026 Cannes Film Festival]]
 ```
 
-**Das Plugin verarbeitet automatisch:**
-- ✅ Key=Value-Paare → SDC via `wbeditentity`
-- ✅ `{{lang|...}}` → Multilingual Wikitext
-- ✅ Templates & Kategorien → Datei-Wikitext
-- ✅ Single Upload Call
+Das Plugin trennt beim Export automatisch:
+
+- `key=value`-Zeilen → SDC via `wbeditentity`
+- `{{lang|1=...}}`-Blöcke, Templates und Kategorien → Wikitext der Dateibeschreibungsseite
 
 ---
 
-## 🔧 SDC Key Reference
+## SDC-Schlüssel
 
-| Key | SDC Property | Beispiel | Bemerkung |
-|-----|---------|----------|-----------|
-| `caption_en` | P2096 (caption) | `Cannes Film Festival 2026` | Englischer Bildtitel |
-| `caption_de` | P2096 | `Filmfestspiele von Cannes 2026` | Deutscher Titel |
-| `caption_fr` | P2096 | `Festival de Cannes 2026` | Französischer Titel |
-| `caption_it` | P2096 | `Festival di Cannes 2026` | Italienischer Titel |
-| `creator` | P170 | `Q640` (Isaac Asimov) | Wikimedia-ID des Schöpfers |
-| `depicts` | P180 | `Q1342843` (Person) | Porträt/dargestellte Person |
-| `copyright` | P6216 | `Q73566113` (CC-BY-SA-4.0) | Urheberrechtstatus |
-| `license` | P275 | `Q18199165` (CC-BY-SA-4.0) | Lizenz-Wikidata-ID |
+| Schlüssel | Property | Beispiel | Bemerkung |
+|-----------|----------|----------|-----------|
+| `caption_xx` | P2096 | `caption_en=...` | Bildunterschrift, beliebiger ISO-Code |
+| `depicts` | P180 | `Q640; Q42` | Mehrere QIDs, Semikolon-getrennt; je QID eine eigene Aussage |
+| `created_during` | P10408 | `Q124692383` | Ereignis, eine QID |
+| `creator` | P170 | `Q640` | Urheber |
+| `copyright` | P6216 | `Q73566113` | Urheberrechtsstatus |
+| `license` | P275 | `Q18199165` | Lizenz |
 
-**Weitere Felder möglich** – siehe [Wikidata:Commons Structured Data](https://www.wikidata.org/wiki/Wikidata:Commons_Structured_Data)
+Kommentare hinter einer QID (`Q640 # Harald Krichel`) sind erlaubt und werden vor dem Upload entfernt.
+
+Weitere Hintergründe: [Commons:Structured data](https://commons.wikimedia.org/wiki/Commons:Structured_data)
 
 ---
 
-## 🛠️ Technische Details zur v2.0.0 Refaktorierung
-
-### Was ist neu?
-
-**v1.8 → v2.0:**
-
-1. **SDC-Field-Extraktion** – Alle Key=Value-Paare werden aus `description_all` geparst und strukturiert
-2. **Single-Call Upload** – `wbeditentity`-API statt mehrfacher API-Aufrufe
-3. **Multilingual Support** – Automatische Verarbeitung von `{{lang|...}}`-Blöcken
-4. **Robuste Key-Validierung** – Nur unterstützte Keys werden hochgeladen
-
-### Code-Architektur
+## Code-Architektur
 
 ```
 mediawiki.lrdevplugin/
-├── Info.lua                          # Plugin-Metadaten & Version
-├── MediaWikiExportServiceProvider.lua # UI & Export-Dialog
-├── MediaWikiInterface.lua             # Verarbeitung & Validierung
-├── MediaWikiApi.lua                   # API-Aufrufe (wbeditentity)
-├── MediaWikiMetadataProvider.lua      # Metadataset-Definitionen
+├── Info.lua                           # Plugin-Metadaten, Version, Menüeinträge
+├── MediaWikiExportServiceProvider.lua # Export-Dialog und Export-Ablauf
+├── MediaWikiInterface.lua             # Aufbau der Dateibeschreibung, SDC-Extraktion
+├── MediaWikiApi.lua                   # API-Aufrufe (Login, Upload, wbeditentity)
+├── MediaWikiMetadataProvider.lua      # Definition der Metadatenfelder
+├── MediaWikiMetadataSet*.lua          # Metadaten-Sets für das Bedienfeld
 ├── MediaWikiUtils.lua                 # Hilfsfunktionen
-└── Tools/                             # Batch-Tools
+├── ToolEditSdc.lua                    # SDC-Editor
+├── ToolConvertDescriptionAll.lua      # Konverter Einzelfelder ↔ Wikitext
+└── Tool*.lua                          # weitere Batch-Werkzeuge
 ```
 
-**Key-Extraktion in `MediaWikiInterface.lua`:**
-- Regex-basierte Extraktion von `key=value`-Paaren
-- Validierung gegen SDC-Schema
-- Strukturierte `wbeditentity`-Payload
+---
+
+## Weiterführende Dokumentation
+
+- [SDC-CHANGES.md](./SDC-CHANGES.md) – vollständiger Änderungsbericht (Versionshistorie, Sicherheits-Fixes)
+- [Installation.md](./Installation.md) – ausführliche Setup-Anleitung
+- [SDC-Workflow.md](./SDC-Workflow.md) – Workflows mit SDC-Integration
+- [Commons:LrMediaWiki](https://commons.wikimedia.org/wiki/Commons:LrMediaWiki) – Dokumentation des Ursprungs-Plugins
 
 ---
 
-## 📚 Weiterführende Dokumentation
+## Issues und Support
 
-- **[Installation.md](./docs/Installation.md)** – Detaillierte Setup-Anleitung
-- **[SDC-Workflow.md](./docs/SDC-Workflow.md)** – Praktische Workflows mit SDC-Integration
-- **[Refactoring-Details.md](./docs/Refactoring-Details.md)** – Technische Tiefe der v2.0-Refaktorierung
-- **[Commons:LrMediaWiki](https://commons.wikimedia.org/wiki/Commons:LrMediaWiki)** – Offizielle Commons-Dokumentation
+- **GitHub Issues:** [Fehler melden](https://github.com/krichel89/LrMediaWiki2/issues)
+- **Commons:** [Commons:LrMediaWiki](https://commons.wikimedia.org/wiki/Commons:LrMediaWiki)
 
 ---
 
-## 🐛 Issues & Support
+## Lizenz
 
-- **GitHub Issues:** [Report a bug](https://github.com/krichel89/LrMediaWiki2/issues)
-- **Commons Talk Page:** [Commons:Talk:LrMediaWiki](https://commons.wikimedia.org/wiki/Talk:Commons:LrMediaWiki)
-- **Wikidata:** [Wikidata:Commons Structured Data](https://www.wikidata.org/wiki/Wikidata:Commons_Structured_Data)
-
----
-
-## 📝 Lizenz
-
-LrMediaWiki2 ist unter der **MIT License** lizenziert – siehe [LICENSE.txt](LICENSE.txt)
+LrMediaWiki2 steht unter der **MIT License** – siehe [LICENSE.txt](LICENSE.txt)
 
 **Basierend auf:**
 - Original: [robinkrahl/LrMediaWiki](https://github.com/robinkrahl/LrMediaWiki)
@@ -211,17 +188,9 @@ LrMediaWiki2 ist unter der **MIT License** lizenziert – siehe [LICENSE.txt](LI
 
 ---
 
-## 👤 Credits
+## Credits
 
-**LrMediaWiki2 v2.0 Refactoring:** Harald Krichel ([@Seewolf](https://commons.wikimedia.org/wiki/User:Seewolf))  
-**Original Plugin:** Robin Krahl & Contributors
+**LrMediaWiki2:** Harald Krichel ([@Seewolf](https://commons.wikimedia.org/wiki/User:Seewolf))
+**Ursprüngliches Plugin:** Robin Krahl und Mitwirkende
 
-Für vollständige Credits siehe [CREDITS.txt](CREDITS.txt)
-
----
-
-## 🌍 Community
-
-- Wikimedia Commons: [@Seewolf](https://commons.wikimedia.org/wiki/User:Seewolf)
-- German Wikipedia: [Administrator since 2003](https://de.wikipedia.org/wiki/Benutzer:Seewolf)
-- Wikidata contributions: [Wikidata profile](https://www.wikidata.org/wiki/User:Seewolf)
+Vollständige Credits: [CREDITS.txt](CREDITS.txt)
