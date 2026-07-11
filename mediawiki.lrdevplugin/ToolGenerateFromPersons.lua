@@ -524,11 +524,13 @@ LrFunctionContext.callWithContext('DescriptionFromPersonsDialog',
                         photo:setPropertyForPlugin(_PLUGIN, 'categories', des)
                     end
 
-                    if regions[2] then
-                        photo:setPropertyForPlugin(_PLUGIN, 'otherFields',
-                                                   u.getImageNotes(regions,
-                                                                   photo))
-                    end
+                    -- NOTE: the original plug-in wrote image notes for multi-
+                    -- person photos into the 'otherFields' metadata field.
+                    -- This fork does not declare that field; writing to an
+                    -- undeclared property is a hard error that aborts the
+                    -- tool ("Attempt to access property ... not declared").
+                    -- The image-notes feature is therefore disabled until the
+                    -- field (or a replacement) is declared again.
 
                 end)
             end

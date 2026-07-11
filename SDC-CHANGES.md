@@ -14,6 +14,22 @@ worked and created_during did not. All four QID fields (P170, P6216, P275,
 P10408) now go through the same comment-stripping helper. Covered by tests,
 including a regression test proving the old behaviour failed validation.
 
+**Consistency/security review (same delivery):**
+
+- Second crash candidate of the otherFields class found and defused:
+  ToolGenerateFromPersons wrote image notes for multi-person photos into the
+  undeclared 'otherFields' field - the tool would have aborted with the same
+  "not declared" error as the export. The write was removed; the image-notes
+  feature is disabled until the field is declared again (noted in the code).
+- Full audit re-run: every get/setPropertyForPlugin call now targets a
+  declared field; password masking, JSON-encoded wbeditentity, HTTPS
+  enforcement and the removal of 'password' from export presets are all
+  verified intact.
+- .bak/.orig leftovers removed from the distributed package.
+- 31 now-unused tooltip LOC keys remain in TranslatedStrings_de.txt on
+  purpose - they are harmless and would be needed again if field tooltips
+  ever return.
+
 **Fixes the cluttered Synchronize Metadata dialog** (an extra, field-less
 text line under every field).
 
