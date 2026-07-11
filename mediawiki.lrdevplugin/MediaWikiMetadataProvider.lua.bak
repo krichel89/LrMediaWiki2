@@ -44,7 +44,7 @@ return {
 		},
 		{
 			id = 'description_en',
-			version = 2,
+			version = 1,
 			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionEn=Description (en)^n^nEnglish description. At export it is wrapped as {{en|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
 			dataType = 'string',
 			searchable = false,
@@ -52,7 +52,7 @@ return {
 		},
 		{
 			id = 'description_de',
-			version = 2,
+			version = 1,
 			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionDe=Description (de)^n^nGerman description. At export it is wrapped as {{de|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
 			dataType = 'string',
 			searchable = false,
@@ -229,5 +229,5 @@ return {
 			browsable = false,
 		},
 	},
-	schemaVersion = 13,
+	schemaVersion = 23,
 }

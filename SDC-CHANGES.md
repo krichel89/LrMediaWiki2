@@ -1,5 +1,36 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.11 (July 2026)
+
+**Fixes the Windows catalog error "Could not upgrade your catalog for plug-in
+metadata".**
+
+Root cause (found by dumping the catalog's AgPhotoPropertySpec table): the
+per-field `version` of `description_en` and `description_de` was declared as
+`1` in MediaWikiMetadataProvider.lua, but the original LrMediaWiki already
+registered these two fields with `version = 2`. Any catalog that had ever
+seen the original plug-in therefore stores them at version 2 - and a plug-in
+declaring version 1 is a DOWNGRADE, which Lightroom refuses with exactly that
+message. It is NOT the `schemaVersion` and NOT the toolkit identifier: raising
+schemaVersion to 22/23/500 changed nothing, and an empty catalog worked fine,
+because it had no version-2 fields to conflict with.
+
+Fix: `description_en` and `description_de` now declare `version = 2`,
+matching the original. `schemaVersion` bumped 12 -> 13.
+
+Side observation: the catalog also holds seven orphaned fields from the
+original plug-in that this fork no longer defines (`source`, `author`,
+`date`, `templates`, `otherFields`, `otherVersions`, `description_other`).
+Orphaned fields are harmless - Lightroom ignores them.
+
+**IMPORTANT before updating on a machine where the fields still hold data:**
+per the Lightroom SDK, raising a field's `version` causes Lightroom to
+discard that field's existing values. On the Mac these two fields are still
+at version 1, so the bump to 2 may clear them. If you have content in
+"Description (en)" / "Description (de)", run the converter tool
+(Library > Plug-in Extras > Description fields <-> Wikitext) FIRST, so the
+content is moved into the Wikitext field, which is unaffected.
+
 ## Version 2.0.10 (July 2026)
 
 1. **New export dialog row "Other fields"** (batch default, its own row below
