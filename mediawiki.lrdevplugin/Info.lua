@@ -97,6 +97,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 9,
+		revision = 10,
 	},
 }

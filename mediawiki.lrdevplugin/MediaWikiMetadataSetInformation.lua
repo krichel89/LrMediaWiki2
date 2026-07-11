@@ -27,7 +27,9 @@ return {
 	items = {
 		{ 'com.adobe.label', label = 'LrMediaWiki – Information' },
 		{ pf .. 'caption_en', label = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)" },
-		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Description (all)", height_in_lines = 10 },
+		{ pf .. 'description_en', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionEnLabel=Description (en)", height_in_lines = 3 },
+		{ pf .. 'depicts', label = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)" },
+		{ pf .. 'created_during', label = LOC "$$$/LrMediaWiki/Metadata/CreatedDuring=Created during (P10408)" },
 		{ pf .. 'categories', label = LOC "$$$/LrMediaWiki/Metadata/Categories=Categories" },
 		'com.adobe.separator',
 		{ 'com.adobe.label', label = 'Lightroom' },

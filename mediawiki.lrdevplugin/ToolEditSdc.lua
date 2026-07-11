@@ -12,6 +12,8 @@
 --     dropdown (first hit preselected); "⬅ Übernehmen" appends
 --     "QID # Label" to the depicts field
 --   * created during (P10408) with the same live search (single QID)
+--   * categories (the per-photo 'categories' field, semicolon-separated;
+--     lives in its own metadata field, NOT inside description_all)
 --   * a free wikitext field, plus "⬇ Captions → Wikitext"
 --
 -- The result is written back into "description_all" as caption_XX= /
@@ -330,6 +332,7 @@ LrFunctionContext.callWithContext('LrMediaWikiEditSdc', function(context)
 	-- Read and parse the current per-file metadata.
 	local descAll = activePhoto:getPropertyForPlugin(_PLUGIN, 'description_all') or ''
 	local capEnField = activePhoto:getPropertyForPlugin(_PLUGIN, 'caption_en') or ''
+	local categoriesField = activePhoto:getPropertyForPlugin(_PLUGIN, 'categories') or ''
 	local captions, depicts, createdDuring, freetext = parseDescriptionAll(descAll)
 	if not filled(captions.en) and filled(capEnField) then
 		captions.en = capEnField
@@ -354,6 +357,7 @@ LrFunctionContext.callWithContext('LrMediaWikiEditSdc', function(context)
 	props.cdQuery = ''
 	props.cdResults = {}
 	props.cdChoice = ''
+	props.categories = categoriesField
 	props.applyDepictsToAll = true
 
 	local f = LrView.osFactory()
@@ -546,6 +550,20 @@ LrFunctionContext.callWithContext('LrMediaWikiEditSdc', function(context)
 		f:spacer { height = 10 },
 
 		f:static_text {
+			title = 'Kategorien (mit Semikolon getrennt, ohne [[Category:]]):',
+		},
+		f:row {
+			f:edit_field {
+				value = bind('categories'),
+				immediate = true,
+				fill_horizontal = 1,
+				width_in_chars = 44,
+			},
+		},
+
+		f:spacer { height = 10 },
+
+		f:static_text {
 			title = 'Weiterer Wikitext / Kommentare:',
 		},
 		f:row {
@@ -607,9 +625,12 @@ LrFunctionContext.callWithContext('LrMediaWikiEditSdc', function(context)
 	local depictsToApply = props.depicts
 
 	-- Already inside the outer async task – write directly.
+	local newCategories = trim(props.categories or '')
+
 	catalog:withWriteAccessDo('LrMediaWiki: SDC bearbeiten', function()
 		activePhoto:setPropertyForPlugin(_PLUGIN, 'description_all', newDescAll)
 		activePhoto:setPropertyForPlugin(_PLUGIN, 'caption_en', newCapEn)
+		activePhoto:setPropertyForPlugin(_PLUGIN, 'categories', newCategories)
 
 		if applyAll then
 			local targets = catalog:getTargetPhotos()

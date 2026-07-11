@@ -147,28 +147,6 @@ MediaWikiPluginInfoProvider.sectionsForTopOfDialog = function(viewFactory, prope
 			},
 
 			viewFactory:row {
-				spacing = viewFactory:control_spacing(),
-				viewFactory:static_text {
-					width = LrView.share 'label_width',
-					title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorLabel=Color label on export" .. ':',
-					alignment = labelAlignment,
-				},
-				viewFactory:combo_box {
-					value = bind 'export_color',
-					width = 222,
-					immediate = true,
-					items = { 
-						nil, 
-						'red',
-						'yellow',  
-						'green', 
-						'blue',
-						'purple',
-					},
-				},
-			},
-
-			viewFactory:row {
 				viewFactory:checkbox {
 					value = bind 'create_snapshots',
 					title = LOC "$$$/LrMediaWiki/Section/Config/Snapshots=Create snapshots on export",

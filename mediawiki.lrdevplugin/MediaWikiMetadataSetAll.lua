@@ -41,7 +41,11 @@ return {
 		{ 'com.adobe.label', label = 'LrMediaWiki' },
 		-- first group
 		{ pf .. 'caption_en', label = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)" },
-		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Description (all)", height_in_lines = 10 },
+		{ pf .. 'description_en', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionEnLabel=Description (en)", height_in_lines = 3 },
+		{ pf .. 'description_de', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionDeLabel=Description (de)", height_in_lines = 3 },
+		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Wikitext", height_in_lines = 10 },
+		{ pf .. 'depicts', label = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)" },
+		{ pf .. 'created_during', label = LOC "$$$/LrMediaWiki/Metadata/CreatedDuring=Created during (P10408)" },
 		{ pf .. 'categories', label = LOC "$$$/LrMediaWiki/Metadata/Categories=Categories" },
 		-- second group
 		'com.adobe.separator',

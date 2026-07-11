@@ -29,7 +29,7 @@ return {
 		{
 			id = 'depicts',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/DepictsTooltip=Depicts (P180)^n^nWikidata QIDs of what is shown, comma-separated (e.g. Q640, Q42). Published as SDC statements (P180). A value here overrides any depicts= line in “Description (all)”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/DepictsTooltip=Depicts (P180)^n^nWikidata QIDs of what is shown, comma-separated (e.g. Q640, Q42). Published as SDC statements (P180). A value here overrides any depicts= line in “Wikitext”.",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -37,7 +37,23 @@ return {
 		{
 			id = 'created_during',
 			version = 1,
-			title = LOC "$$$/LrMediaWiki/Metadata/CreatedDuringTooltip=Created during (P10408)^n^nWikidata QID of the event the photo was created during (e.g. Q124692383). Published as an SDC statement (P10408). A value here overrides the export dialog default and any created_during= line in “Description (all)”.",
+			title = LOC "$$$/LrMediaWiki/Metadata/CreatedDuringTooltip=Created during (P10408)^n^nWikidata QID of the event the photo was created during (e.g. Q124692383). Published as an SDC statement (P10408). A value here overrides the export dialog default and any created_during= line in “Wikitext”.",
+			dataType = 'string',
+			searchable = false,
+			browsable = false,
+		},
+		{
+			id = 'description_en',
+			version = 1,
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionEn=Description (en)^n^nEnglish description. At export it is wrapped as {{en|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
+			dataType = 'string',
+			searchable = false,
+			browsable = false,
+		},
+		{
+			id = 'description_de',
+			version = 1,
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionDe=Description (de)^n^nGerman description. At export it is wrapped as {{de|1=…}} and merged into the wikitext description; the converter tool (Plug-in Extras) moves it into/out of “Wikitext”.",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -45,7 +61,7 @@ return {
 		{
 			id = 'description_all',
 			version = 10,
-			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionAllTooltip=Description (all)^n^nFull Wikitext description for this file. Enter the complete wikitext including templates, license, categories etc. Categories can also be entered as [[Category:Name]] and will be merged with categories from the export dialog.",
+			title = LOC "$$$/LrMediaWiki/Metadata/DescriptionAllTooltip=Wikitext^n^nFull Wikitext description for this file. Enter the complete wikitext including templates, license, categories etc. Categories can also be entered as [[Category:Name]] and will be merged with categories from the export dialog.",
 			dataType = 'string',
 			searchable = false,
 			browsable = false,
@@ -213,5 +229,5 @@ return {
 			browsable = false,
 		},
 	},
-	schemaVersion = 11,
+	schemaVersion = 12,
 }

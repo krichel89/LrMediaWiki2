@@ -34,19 +34,24 @@ local MediaWikiUtils = require 'MediaWikiUtils'
 local MediaWikiExportServiceProvider = {}
 
 -- Normalize a Structured-Data QID entered in the export dialog:
--- trim surrounding whitespace and upper-case a leading "q" (q640 -> Q640),
--- so the value matches the ^Q%d+$ form expected by MediaWikiApi.wbEditEntity.
+-- trim surrounding whitespace, strip an inline comment after "#"
+-- (e.g. "Q640 # Harald Krichel" -> "Q640"), and upper-case a leading "q"
+-- (q640 -> Q640), so the value matches the ^Q%d+$ form expected by
+-- MediaWikiApi.wbEditEntity.
 -- Returns '' for anything that is not a single, well-formed QID.
 local function normalizeSdcQid(value)
 	if not MediaWikiUtils.isStringFilled(value) then
 		return ''
 	end
 	local qid = MediaWikiUtils.trim(value)
+	-- Strip inline comment
+	qid = qid:match('^([^#]+)') or qid
+	qid = MediaWikiUtils.trim(qid)
 	qid = qid:gsub('^[qQ](%d+)$', 'Q%1')
 	if qid:match('^Q%d+$') then
 		return qid
 	end
-	return '' -- not a valid single QID; ignored (per-file description_all can still set one)
+	return ''
 end
 
 local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
@@ -84,6 +89,7 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 		info_permission = propertyTable.info_permission,
 		info_license = propertyTable.info_license,
 		info_templates = propertyTable.info_templates,
+		other_fields = propertyTable.other_fields,
 		info_categories = propertyTable.info_categories,
 		-- Structured data
 		caption_en = '', -- '<!-- File Caption (en) -->',
@@ -102,8 +108,42 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 		exportFields.caption_en = captionEn
 	end
 
+	-- Field "Other fields" (per-file override of the export dialog default;
+	-- this is the "Other fields" field from the Artwork / Object photo
+	-- Metadata panel sets, e.g. "{{Credit line|Author=...|Other=...}}").
+	local otherFieldsPerFile = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'otherFields')
+	if MediaWikiUtils.isStringFilled(otherFieldsPerFile) then
+		exportFields.other_fields = otherFieldsPerFile
+	end
+
 	-- Field "description_all" – single freetext Wikitext field
 	local descriptionAll = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'description_all') or ''
+
+	-- Merge the per-language single-line fields (Metadata panel sets
+	-- "Information" / "Information (de)") into the wikitext description as
+	-- {{en|1=…}} / {{de|1=…}} blocks. This makes both representations
+	-- equivalent at export time, no matter which panel set was used last.
+	-- A block that is already literally present is not added twice.
+	local langBlocks = ''
+	for _, lang in ipairs({ 'en', 'de' }) do
+		local fieldValue = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'description_' .. lang) or ''
+		if MediaWikiUtils.isStringFilled(fieldValue) then
+			local block = '{{' .. lang .. '|1=' .. MediaWikiUtils.trim(fieldValue) .. '}}'
+			if not descriptionAll:find(block, 1, true) then
+				if langBlocks ~= '' then
+					langBlocks = langBlocks .. '\n'
+				end
+				langBlocks = langBlocks .. block
+			end
+		end
+	end
+	if langBlocks ~= '' then
+		if MediaWikiUtils.isStringFilled(descriptionAll) then
+			descriptionAll = langBlocks .. '\n' .. descriptionAll
+		else
+			descriptionAll = langBlocks
+		end
+	end
 	exportFields['description_all'] = descriptionAll
 
 	-- Structured-data sidebar fields (Metadata panel): depicts (P180) and
@@ -450,6 +490,9 @@ MediaWikiExportServiceProvider.startDialog = function(propertyTable)
 	else
 		propertyTable.password = MediaWikiUtils.retrievePassword(propertyTable.api_path, propertyTable.username)
 	end
+	-- Color label on export: global plug-in preference (single source of
+	-- truth, shared with the Plug-in Manager section).
+	propertyTable.export_color = MediaWikiUtils.getExportColor()
 end
 
 MediaWikiExportServiceProvider.endDialog = function(propertyTable)
@@ -459,6 +502,7 @@ MediaWikiExportServiceProvider.endDialog = function(propertyTable)
 		-- Therefore delete field "password" from property table:
 		propertyTable.password = nil
 	end
+	MediaWikiUtils.setExportColor(propertyTable.export_color)
 end
 
 MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext, exportContext) -- luacheck: ignore functionContext
@@ -698,6 +742,7 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 	local authorTooltip = LOC "$$$/LrMediaWiki/Metadata/AuthorTooltip=Author^n^nRequired field, if not “Artwork” has been chosen (“Artwork” recommends to use “Artist” or “Author”).^nShould be set per file or at export dialog. Setting per file has priority over setting at export dialog. Example:^n  [[User:MyUserName|MyRealName]]"
 	local permissionTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/PermisssionTooltip=Permission^n^nPermission information like {{PermissionOTRS}}. Either this field or “License” should be set."
 	local otherTemplatesTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherTemplatesTooltip=Other Templates^n^nOther templates are inserted after the infobox template and before the licensing section. Examples:^n  {{Panorama}}^n  {{Personality rights}}^n  {{Location estimated}}"
+	local otherFieldsTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Other fields^n^nBatch default for extra wikitext/templates inserted after the infobox template (same position as Other Templates). A value in the “Other fields” field of the Artwork / Object photo Metadata panel overrides this default for that one photo."
 	local licenseTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/LicenseTooltip=License^n^nThe license template to use, e.g. {{Cc-by-sa-4.0}}. Either this field or “Permission” should be set."
 	local categoriesTooltip = LOC "$$$/LrMediaWiki/Metadata/CategoriesTooltip=Categories^n^nThe categories all uploaded images should be added to; without the prefix “Category:” and without square brackets [[…]]. Multiple categories are separated by a ; (semicolon)."
 	local galleryTooltip = LOC "$$$/LrMediaWiki/Section/UploadInformation/GalleryTooltip=Gallery^n^nIf this field is set, a gallery of your uploads will be added to the page with the specified title. Current date related placeholders are recognized. Example:^n  User:MyUserName/My Uploads at <currentLongDate>"
@@ -757,6 +802,28 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 						'https://de.wikipedia.org/w/api.php',
 					},
 					tooltip = apiPathTooltip,
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorLabel=Color label on export" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = LOC "$$$/LrMediaWiki/Section/Config/ExportColorTooltip=After a successful upload, this color label is set on the photo. Global plug-in setting – the same value as in the Plug-in Manager.",
+				},
+				viewFactory:popup_menu {
+					value = bind 'export_color',
+					fill_horizontal = 1,
+					items = {
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorRed=Red", value = 'red' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorYellow=Yellow", value = 'yellow' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorGreen=Green", value = 'green' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorBlue=Blue", value = 'blue' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorPurple=Purple", value = 'purple' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorNone=None", value = 'none' },
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/ExportColorUnchanged=Unchanged", value = nil },
+					},
+					tooltip = LOC "$$$/LrMediaWiki/Section/Config/ExportColorTooltip=After a successful upload, this color label is set on the photo. Global plug-in setting – the same value as in the Plug-in Manager.",
 				},
 			},
 		},
@@ -1075,6 +1142,20 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 			},
 			viewFactory:row {
 				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/UploadInformation/OtherFields=Other fields" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+					tooltip = otherFieldsTooltip,
+				},
+				viewFactory:edit_field {
+					value = bind 'other_fields',
+					immediate = true,
+					fill_horizontal = 1,
+					tooltip = otherFieldsTooltip,
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
 					title = LOC "$$$/LrMediaWiki/Section/UploadInformation/License=License" .. ':',
 					alignment = labelAlignment,
 					width = LrView.share 'label_width',
@@ -1131,13 +1212,13 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 					title = LOC "$$$/LrMediaWiki/Section/StructuredData/Creator=Creator (P170)" .. ':',
 					alignment = labelAlignment,
 					width = LrView.share 'label_width',
-					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Description (all)” overrides this value.",
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Wikitext” overrides this value.",
 				},
 				viewFactory:edit_field {
 					value = bind 'sdc_creator',
 					immediate = true,
 					fill_horizontal = 1,
-					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Description (all)” overrides this value.",
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Wikitext” overrides this value.",
 				},
 			},
 			viewFactory:row {
@@ -1166,8 +1247,8 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 					immediate = true,
 					fill_horizontal = 1,
 					items = {
-						'Q18199165',
-						'Q6938433',
+						'Q18199165 # CC BY-SA 4.0',
+						'Q6938433 # CC0',
 					},
 					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/LicenseTooltip=License (P275)^n^nWikidata QID of the license. Q18199165 = CC BY-SA 4.0, Q6938433 = CC0 (values as used in Cammello – please verify). Applies to every file; a per-file license= line overrides it.",
 				},
@@ -1218,13 +1299,14 @@ MediaWikiExportServiceProvider.exportPresetFields = {
 	{ key = 'info_author', default = '' },
 	{ key = 'info_permission', default = '' },
 	{ key = 'info_templates', default = '' },
+	{ key = 'other_fields', default = '' },
 	{ key = 'info_license', default = '{{Cc-by-sa-4.0}}' },
 	{ key = 'info_categories', default = '' },
 	{ key = 'gallery', default = '' },
 	-- Section Structured Data (SDC), batch-level defaults (Wikidata QIDs):
 	{ key = 'sdc_creator', default = '' },
-	{ key = 'sdc_copyright', default = 'Q73566113' },
-	{ key = 'sdc_license', default = 'Q18199165' },
+	{ key = 'sdc_copyright', default = 'Q73566113 # copyrighted' },
+	{ key = 'sdc_license', default = 'Q18199165 # CC BY-SA 4.0' },
 	{ key = 'sdc_created_during', default = '' },
 }
 

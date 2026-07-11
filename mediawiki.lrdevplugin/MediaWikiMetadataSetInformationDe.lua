@@ -27,12 +27,9 @@ return {
 	items = {
 		{ 'com.adobe.label', label = 'LrMediaWiki – Information (de)' }, -- no localization needed
 		{ pf .. 'caption_en', label = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)" },
-		{ pf .. 'description_de', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionDe=Description (de)", height_in_lines = 3 },
-		{ pf .. 'source', label = LOC "$$$/LrMediaWiki/Metadata/Source=Source" },
-		{ pf .. 'author', label = LOC "$$$/LrMediaWiki/Metadata/Author=Author" },
-		{ pf .. 'date', label = LOC "$$$/LrMediaWiki/Metadata/Date=Date" },
-		{ pf .. 'otherVersions', label = LOC "$$$/LrMediaWiki/Metadata/OtherVersions=Other Versions" },
-		{ pf .. 'templates', label = LOC "$$$/LrMediaWiki/Metadata/Templates=Templates" },
+		{ pf .. 'description_de', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionDeLabel=Description (de)", height_in_lines = 3 },
+		{ pf .. 'depicts', label = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)" },
+		{ pf .. 'created_during', label = LOC "$$$/LrMediaWiki/Metadata/CreatedDuring=Created during (P10408)" },
 		{ pf .. 'categories', label = LOC "$$$/LrMediaWiki/Metadata/Categories=Categories" },
 		'com.adobe.separator',
 		{ 'com.adobe.label', label = 'Lightroom' },

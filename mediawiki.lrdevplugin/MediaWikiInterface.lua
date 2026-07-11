@@ -288,6 +288,12 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	-- Extract manually written [[Category:...]] from "description_all" to avoid duplicates,
 	-- then append all auto-collected categories at the end of the freetext.
 	local descriptionAll = exportFields['description_all'] or ''
+	-- Normalize line endings (Windows CRLF, old-Mac CR) so the line-anchored
+	-- key=value extraction below always sees a plain "\n" before a line.
+	-- Without this, a pasted-in line with "\r\n" could in rare cases fail to
+	-- match the anchor and silently stay as plain wikitext instead of being
+	-- extracted as structured data (e.g. depicts=... never becoming a claim).
+	descriptionAll = descriptionAll:gsub('\r\n', '\n'):gsub('\r', '\n')
 	for manualCat in string.gmatch(descriptionAll, '%[%[Category:([^%]]+)%]%]') do
 		manualCat = MediaWikiUtils.trim(manualCat)
 		if not hash[manualCat] then
@@ -309,7 +315,9 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	do
 		local keptLines = {}
 		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do
-			local lang, val = line:match('^caption_([%a][%w%-]*)=(.*)$')
+			-- Tolerate accidental leading whitespace (e.g. an indented line
+			-- pasted from elsewhere) so the key is still recognized.
+			local lang, val = line:match('^%s*caption_([%a][%w%-]*)=(.*)$')
 			if lang then
 				structuredData['caption_' .. lang:lower()] = MediaWikiUtils.trim(val)
 			else
@@ -318,21 +326,22 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 		end
 		descriptionAll = table.concat(keptLines, '\n')
 	end
-	-- Non-caption keys are extracted line-anchored as before.
+	-- Non-caption keys are extracted line-anchored as before. "%s*" tolerates
+	-- accidental leading whitespace on the line without requiring it.
 	local sdKeys = { 'creator', 'copyright', 'license', 'depicts', 'created_during' }
 	for _, key in ipairs(sdKeys) do
 		local value
 		-- Check at start of string
-		value = descriptionAll:match('^' .. key .. '=([^\n]+)')
+		value = descriptionAll:match('^%s*' .. key .. '=([^\n]+)')
 		-- Check after a newline
 		if not value then
-			value = descriptionAll:match('\n' .. key .. '=([^\n]+)')
+			value = descriptionAll:match('\n%s*' .. key .. '=([^\n]+)')
 		end
 		if value then
 			structuredData[key] = MediaWikiUtils.trim(value)
 			-- Remove the line from freetext
-			descriptionAll = descriptionAll:gsub('\n' .. key .. '=[^\n]+', '')
-			descriptionAll = descriptionAll:gsub('^' .. key .. '=[^\n]+\n?', '')
+			descriptionAll = descriptionAll:gsub('\n%s*' .. key .. '=[^\n]+', '')
+			descriptionAll = descriptionAll:gsub('^%s*' .. key .. '=[^\n]+\n?', '')
 		end
 	end
 	descriptionAll = MediaWikiUtils.trim(descriptionAll)
@@ -373,10 +382,20 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	end
 	infoBlock = infoBlock .. '}}'
 
-	-- 2. Other templates
+	-- 2. Other templates + Other fields
+	-- "Other Templates" (info_templates, batch-level) and "Other fields"
+	-- (exportFields.other_fields: per-file value if set, else the batch
+	-- default from the export dialog) both go into the same block after the
+	-- infobox – both are just extra wikitext/templates at that position.
 	local otherTemplatesBlock = ''
 	if MediaWikiUtils.isStringFilled(exportFields.info_templates) then
 		otherTemplatesBlock = exportFields.info_templates
+	end
+	if MediaWikiUtils.isStringFilled(exportFields.other_fields) then
+		if otherTemplatesBlock ~= '' then
+			otherTemplatesBlock = otherTemplatesBlock .. '\n'
+		end
+		otherTemplatesBlock = otherTemplatesBlock .. exportFields.other_fields
 	end
 
 	-- 3. License
@@ -725,7 +744,9 @@ MediaWikiInterface.wbSetStructuredData = function(exportFields, fileName)
 		claimsTable[#claimsTable + 1] = { property = 'P10408', value = sd.created_during }
 	end
 	if MediaWikiUtils.isStringFilled(sd.depicts) then
-		for qid in sd.depicts:gmatch('[^,]+') do
+		for token in sd.depicts:gmatch('[^,;]+') do
+			-- Strip inline comments (e.g. "Q640 # Harald Krichel" -> "Q640")
+			local qid = token:match('^([^#]+)') or token
 			qid = MediaWikiUtils.trim(qid)
 			if MediaWikiUtils.isStringFilled(qid) then
 				claimsTable[#claimsTable + 1] = { property = 'P180', value = qid }
