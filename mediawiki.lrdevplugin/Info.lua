@@ -47,16 +47,23 @@ return {
 			file = "ToolEditSdcWeb.lua",
 		},
 		{
-			title = "🏷️ Edit Structured Data (SDC)",
-			file = "ToolEditSdc.lua",
-		},
-		{
 			title = "🔁 Description fields ↔ Wikitext",
 			file = "ToolConvertDescriptionAll.lua",
 		},
 	},
 
+	-- The browser editor is deliberately the FIRST entry in both menus: it is
+	-- the most frequently used tool, and the first item of a submenu is the
+	-- shortest possible pointer path.
 	LrExportMenuItems = {
+		{
+			title = "🌐 Edit Structured Data in browser",
+			file = "ToolEditSdcWeb.lua",
+		},
+		{
+			title = "🔁 Description fields ↔ Wikitext",
+			file = "ToolConvertDescriptionAll.lua",
+		},
 		{
 			title = "🔍 Search and Replace Metadata",
 			file = "ToolSearchAndReplaceMetadata.lua",
@@ -68,18 +75,6 @@ return {
 		{
 			title = "🚀 Generate filename and description from persons",
 			file = "ToolGenerateFromPersons.lua",
-		},
-		{
-			title = "🌐 Edit Structured Data in browser",
-			file = "ToolEditSdcWeb.lua",
-		},
-		{
-			title = "🏷️ Edit Structured Data (SDC)",
-			file = "ToolEditSdc.lua",
-		},
-		{
-			title = "🔁 Description fields ↔ Wikitext",
-			file = "ToolConvertDescriptionAll.lua",
 		},
 		{
 			title = "📄 Set title to file prefix and headline",
@@ -105,6 +100,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 35,
+		revision = 36,
 	},
 }

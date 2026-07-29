@@ -1,5 +1,28 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.36 (July 2026)
+
+**The built-in SDC dialog is gone.** `ToolEditSdc.lua` has been removed and
+with it both menu entries ("Edit Structured Data (SDC)"). The browser editor
+is now the only SDC editor. The dialog had been kept as a no-browser
+fallback, but it duplicated a growing amount of behaviour - two search
+implementations, two ways of writing the same two stores - and the browser
+editor has overtaken it in every respect except one (see below). Nothing
+else referenced the file: it was reachable only from `Info.lua`, so the
+removal touches no shared code and no metadata field definition.
+`schemaVersion` is unchanged.
+
+**Known regression.** The dialog had a checkbox that copied `depicts` to the
+entire selection; the browser editor works on the active photo only and has
+no equivalent. Until that is rebuilt, distributing a QID across many photos
+has to be done photo by photo, or through the export dialog's batch
+defaults.
+
+**Menu order.** The browser editor is now the first entry in both the
+Library and the File plug-in menus, so it sits at the top of the submenu.
+The titles in the two menus remain identical, so a single macOS app shortcut
+bound to the title still reaches it from either menu.
+
 ## Version 2.0.35 (July 2026)
 
 **Tracking category on every upload.** Every uploaded file now gets

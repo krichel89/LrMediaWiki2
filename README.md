@@ -28,7 +28,7 @@ depicts=Q42 # Douglas Adams
 
 Alle Aussagen und Captions werden in einem einzigen `wbeditentity`-Aufruf publiziert, mit einer eigenen P180-Aussage je QID.
 
-### SDC-Editor im Browser (empfohlen)
+### SDC-Editor im Browser
 
 Bibliothek → Zusatzmoduloptionen → **Edit Structured Data in browser**. Die strukturierten Daten des aktiven Fotos werden in einer Seite im Standardbrowser geöffnet:
 
@@ -42,13 +42,9 @@ Lightroom ist währenddessen **nicht blockiert** – die Bearbeitung darf belieb
 
 Voraussetzung: Der Browser muss Dateien ohne Rückfrage in den Standard-Downloads-Ordner laden. Fragt er nach dem Speicherort, funktioniert es ebenfalls – dann muss dieser Ordner gewählt werden.
 
-### SDC-Editor als Dialog
-
-Bibliothek → Zusatzmoduloptionen → **Edit Structured Data (SDC)**. Der eingebaute Dialog bleibt vollständig erhalten und braucht keinen Browser. Er bietet dieselbe Wikidata-Suche, vier Sprachfelder, das Kategorien-Feld und den freien Wikitext. Depicts können mit einem Haken auf die gesamte Auswahl übertragen werden (fehlende QIDs werden ergänzt, vorhandene bleiben erhalten).
-
 ### Suche auf Wikidata
 
-Beide Editoren suchen zuerst über die Präfixsuche. Liefert die zu wenig, wird zusätzlich die Volltextsuche befragt – dadurch werden auch umgestellte Wortfolgen und Ordnungszahlen gefunden, etwa „78th Cannes Film Festival“.
+Der Editor sucht zuerst über die Präfixsuche. Liefert die zu wenig, wird zusätzlich die Volltextsuche befragt – dadurch werden auch umgestellte Wortfolgen und Ordnungszahlen gefunden, etwa „78th Cannes Film Festival“.
 
 ### Mehrsprachige Wikitext-Beschreibungen
 
@@ -180,7 +176,6 @@ mediawiki.lrdevplugin/
 ├── MediaWikiMetadataProvider.lua      # Definition der Metadatenfelder
 ├── MediaWikiMetadataSet*.lua          # Metadaten-Sets für das Bedienfeld
 ├── MediaWikiUtils.lua                 # Hilfsfunktionen
-├── ToolEditSdc.lua                    # SDC-Editor als Dialog
 ├── ToolEditSdcWeb.lua                 # SDC-Editor im Browser
 ├── SdcEditorTemplate.lua              # die Editorseite (maschinell erzeugt)
 ├── ToolConvertDescriptionAll.lua      # Konverter Einzelfelder ↔ Wikitext
