@@ -43,6 +43,10 @@ return {
 	-- bound to the title triggers the same script from either menu.
 	LrLibraryMenuItems = {
 		{
+			title = "🌐 Edit Structured Data in browser",
+			file = "ToolEditSdcWeb.lua",
+		},
+		{
 			title = "🏷️ Edit Structured Data (SDC)",
 			file = "ToolEditSdc.lua",
 		},
@@ -64,6 +68,10 @@ return {
 		{
 			title = "🚀 Generate filename and description from persons",
 			file = "ToolGenerateFromPersons.lua",
+		},
+		{
+			title = "🌐 Edit Structured Data in browser",
+			file = "ToolEditSdcWeb.lua",
 		},
 		{
 			title = "🏷️ Edit Structured Data (SDC)",
@@ -97,6 +105,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 12,
+		revision = 35,
 	},
 }

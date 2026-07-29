@@ -21,6 +21,7 @@ local LrFunctionContext = import 'LrFunctionContext'
 local LrView = import 'LrView'
 
 local MediaWikiApi = require 'MediaWikiApi'
+local MediaWikiOAuth = require 'MediaWikiOAuth'
 local MediaWikiUtils = require 'MediaWikiUtils'
 
 local MediaWikiInterface = {
@@ -28,6 +29,10 @@ local MediaWikiInterface = {
 	password = nil,
 	loggedIn = false,
 	fileDescriptionPattern = nil,
+	-- Tracking category added to every upload, the way upload tools on
+	-- Commons conventionally mark their work. Kept as a single constant so it
+	-- can be renamed – or emptied to switch the feature off – in one place.
+	trackingCategory = 'Uploaded with LrMediaWiki2',
 }
 
 MediaWikiInterface.loadFileDescriptionTemplate = function(templateName)
@@ -65,6 +70,33 @@ MediaWikiInterface.prepareUpload = function(username, password, apiPath, templat
 	if apiPath and apiPath:lower():match('^http://') then
 		LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Interface/HttpsRequired=Insecure API path (http://): ^1^nPlease use https:// – otherwise username and password would be sent unencrypted.", apiPath))
 	end
+
+	-- OAuth 2.0 takes priority over username/password: if a token is stored
+	-- for this wiki, use it and skip the classic login entirely.
+	local accessToken, tokenError = MediaWikiOAuth.getValidAccessToken(apiPath)
+	if accessToken then
+		MediaWikiApi.apiPath = apiPath
+		MediaWikiApi.setAccessToken(accessToken)
+		local user = MediaWikiApi.getLoggedInUser()
+		if not user then
+			MediaWikiApi.setAccessToken(nil)
+			LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Interface/OAuthRejected=The saved Wikimedia login is no longer valid. Please log in again in the export dialog.")
+		end
+		MediaWikiInterface.username = user
+		MediaWikiInterface.password = nil
+		MediaWikiInterface.loggedIn = true
+		MediaWikiUtils.trace('Logged in via OAuth as user "' .. user .. '"')
+		local result, message = MediaWikiInterface.loadFileDescriptionTemplate(templateName)
+		if not result then
+			LrErrors.throwUserError(message)
+		end
+		return
+	elseif tokenError then
+		LrErrors.throwUserError(tokenError)
+	end
+
+	-- No OAuth token: classic login.
+	MediaWikiApi.setAccessToken(nil)
 	-- MediaWiki login
 	if username and password then
 		MediaWikiInterface.username = username
@@ -305,6 +337,16 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	descriptionAll = string.gsub(descriptionAll, '%[%[Category:[^%]]+%]%]\n?', '')
 	descriptionAll = MediaWikiUtils.trim(descriptionAll)
 
+	-- Tracking category, the way upload tools on Commons conventionally mark
+	-- their uploads. Added last so it ends up at the bottom of the list, and
+	-- only if it is not already there – re-uploading a file must not produce
+	-- it twice.
+	local tracking = MediaWikiUtils.trim(MediaWikiInterface.trackingCategory or '')
+	if tracking ~= '' and not hash[tracking] then
+		categoriesListTwo[#categoriesListTwo + 1] = tracking
+		hash[tracking] = true
+	end
+
 	-- Extract structured data tags (key=value lines) from description_all
 	-- Only lines that START with key= are matched (avoids matching inside {{templates}})
 	local structuredData = {}
@@ -328,20 +370,28 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	end
 	-- Non-caption keys are extracted line-anchored as before. "%s*" tolerates
 	-- accidental leading whitespace on the line without requiring it.
+	--
+	-- ALL occurrences of a key are collected, not just the first: since 2.0.26
+	-- the SDC editor writes one "depicts=" line per QID, because that reads
+	-- far better with inline comments. Taking only the first line would have
+	-- uploaded a single QID and silently dropped the rest.
 	local sdKeys = { 'creator', 'copyright', 'license', 'depicts', 'created_during' }
 	for _, key in ipairs(sdKeys) do
-		local value
-		-- Check at start of string
-		value = descriptionAll:match('^%s*' .. key .. '=([^\n]+)')
-		-- Check after a newline
-		if not value then
-			value = descriptionAll:match('\n%s*' .. key .. '=([^\n]+)')
+		local values = {}
+		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do
+			local value = line:match('^%s*' .. key .. '=(.*)$')
+			if value then
+				value = MediaWikiUtils.trim(value)
+				if value ~= '' then
+					values[#values + 1] = value
+				end
+			end
 		end
-		if value then
-			structuredData[key] = MediaWikiUtils.trim(value)
-			-- Remove the line from freetext
-			descriptionAll = descriptionAll:gsub('\n%s*' .. key .. '=[^\n]+', '')
-			descriptionAll = descriptionAll:gsub('^%s*' .. key .. '=[^\n]+\n?', '')
+		if #values > 0 then
+			structuredData[key] = table.concat(values, '; ')
+			-- Remove every such line from the freetext
+			descriptionAll = descriptionAll:gsub('\n%s*' .. key .. '=[^\n]*', '')
+			descriptionAll = descriptionAll:gsub('^%s*' .. key .. '=[^\n]*\n?', '')
 		end
 	end
 	descriptionAll = MediaWikiUtils.trim(descriptionAll)

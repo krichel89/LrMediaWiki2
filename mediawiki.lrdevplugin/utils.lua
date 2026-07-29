@@ -48,27 +48,48 @@ end
 
 -- Functions -------------------------------------------------------------------
 
---- Joins the elements of a table into a string using a specified delimiter.
---- 
---- @param a table The table containing the elements to be joined.
---- @param limiter string The delimiter to be used for joining the elements.
---- @param prefix string (optional) A prefix to be added before each joined element.
---- @param suffix string (optional) A suffix to be added after each joined element.
---- @param lastlimiter string (optional) A delimiter to be used before the last element.
+--- Escape a string so it can be used as a LITERAL inside a Lua pattern.
+--- Every magic character (^$()%.[]*+-?) is prefixed with %. Required whenever
+--- user-controlled text (file names, titles, …) ends up in gsub/match/find –
+--- a "(" in a file name would otherwise raise "unfinished capture" at runtime.
+--- @param s string The literal text.
+--- @return string The escaped pattern.
+function u.escapePattern(s)
+    return (tostring(s or ''):gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+end
+
+--- Join the elements of a list into one string.
+--- Rewritten: the previous implementation indexed a[0] (Lua lists start at 1),
+--- used table.unpack (Lua 5.2+; this plug-in runs on Lua 5.1), removed the
+--- wrong element for the last delimiter, and concatenated an undefined global
+--- – it errored for every list of two or more elements. No caller existed at
+--- the time of the rewrite; the semantics below are what the doc always said.
+--- @param a table The list of elements (each is passed through tostring).
+--- @param limiter string Delimiter between elements (default '').
+--- @param prefix string (optional) Added before each element.
+--- @param suffix string (optional) Added after each element.
+--- @param lastlimiter string (optional) Used instead of `limiter` before the
+---        last element ("A, B und C").
 --- @return string The joined string.
 function u.join( a, limiter, prefix, suffix, lastlimiter )
-    --log(a)
-    local l = #a
-
-    if not a or (l <= 1) then
-        return a[0] or ''
+    if type(a) ~= 'table' or #a == 0 then
+        return ''
     end
-
-    a = {table.unpack(a)}
-
-    local options = lastlimiter and (lastlimiter .. table.remove( a, l-1)) or '' 
-
-    return table.concat( persons, limiter ) .. options;
+    limiter = limiter or ''
+    prefix = prefix or ''
+    suffix = suffix or ''
+    local decorated = {}
+    for i = 1, #a do
+        decorated[i] = prefix .. tostring(a[i]) .. suffix
+    end
+    if #decorated == 1 then
+        return decorated[1]
+    end
+    if lastlimiter then
+        local last = table.remove(decorated) -- removes and returns the LAST element
+        return table.concat(decorated, limiter) .. lastlimiter .. last
+    end
+    return table.concat(decorated, limiter)
 end
 
 function u.print_r(arr, indentLevel)
@@ -119,26 +140,38 @@ end
 --- Extracts various parts of a photo's file name.
 -- @param photo The photo object.
 -- @return A table containing the extracted parts of the file name.
-function u.getNameParts(photo)
-    local fn = tostring(photo:getFormattedMetadata('fileName'))
+--- Pure part of getNameParts, split out so it can be tested standalone.
+--- Never raises: file names without an extension or without digits used to
+--- crash on string.lower(nil) / nil:gsub – exactly the inputs a tool that
+--- runs over arbitrary user files must survive.
+function u.parseFileNameParts(fn)
+    fn = tostring(fn or '')
     local r = {
         fullName = fn,
-        name = fn:match("^(.+)%..+$"),
-        ext = fn:match("^.+%.(.+)$"),
+        name = fn:match("^(.+)%..+$") or fn,
+        ext = fn:match("^.+%.(.+)$") or '',
     }
     r.extLower = string.lower( r.ext )
     r.number = r.name:match("%d%d%d+%-?%d*") --Find number pattern
-    r.preName = r.name:match("^(.*" .. r.number:gsub("([^%w])", "%%%1") .. ')') --number with leading text
-    
+    if r.number then
+        r.preName = r.name:match("^(.*" .. u.escapePattern(r.number) .. ')') --number with leading text
+    end
     return r
 end
 
-function u.searchAndReplaceTitle( photo, searchStr, replaceStr )
-    local filename = string.sub( tostring(photo:getFormattedMetadata('fileName')),  0, -5)
-    --underscore, num, oldlabel = string.match(filename, 'MJK(_*)(%d*)(.*)')
+function u.getNameParts(photo)
+    return u.parseFileNameParts(photo:getFormattedMetadata('fileName'))
+end
 
-    local title = filename
-    title = title:gsub(searchStr, replaceStr)
+function u.searchAndReplaceTitle( photo, searchStr, replaceStr )
+    -- Kept in step with the corrected local version in
+    -- ToolSearchAndReplaceFilename.lua: strip the real extension instead of
+    -- blindly cutting four characters (mangled .jpeg and extension-less
+    -- names), and treat the user input as literal text, not as a pattern.
+    local fileName = tostring(photo:getFormattedMetadata('fileName'))
+    local title = fileName:match('^(.*)%.[^.]+$') or fileName
+    local replacement = tostring(replaceStr or ''):gsub('%%', '%%%%')
+    title = title:gsub(u.escapePattern(searchStr), replacement)
 
     return title
 end
@@ -503,15 +536,43 @@ function u.getImageNotes(regions, photo)
     return resultStr
 end
 
+--- Deep-copy helper for copyProps: plain tables are copied recursively so
+--- that source and target never share mutable state. Depth-capped as a guard
+--- against accidental cycles (preference tables are shallow in practice).
+local function deepCopyValue(value, depth)
+    if type(value) ~= 'table' then
+        return value
+    end
+    if depth > 6 then
+        return nil -- deeper nesting is not preference data; drop it
+    end
+    local copy = {}
+    for k, v in pairs(value) do
+        if type(k) ~= 'table' then
+            copy[k] = deepCopyValue(v, depth + 1)
+        end
+    end
+    return copy
+end
+
 function u.copyProps( fromOb, toOb, options )
     toOb = toOb or {}
+    -- A nil source used to crash in pairs(); it happens legitimately, e.g.
+    -- prefs.generator on a fresh installation before anything was saved.
+    if type(fromOb) ~= 'table' then
+        return toOb
+    end
     options = options or {}
     options.stringsOnly = (options.stringsOnly == true) or false
     options.excludeKeys = options.excludeKeys or {}
-    
+
     for key,value in pairs(fromOb) do 
         if (type(key) ~= 'table') and (type(value) == 'string' or options.stringsOnly ~= true) and (options.excludeKeys[key] ~= true) then
-            toOb[key] = value
+            -- Table values are DEEP-copied. The old reference copy silently
+            -- aliased dialog properties with the stored preferences: editing
+            -- one edited the other, and half-finished dialog state leaked
+            -- into prefs without any explicit save.
+            toOb[key] = deepCopyValue(value, 1)
         end
     end
 

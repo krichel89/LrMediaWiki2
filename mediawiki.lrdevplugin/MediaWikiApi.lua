@@ -27,7 +27,30 @@ local MediaWikiApi = {
 	apiPath = nil,
 	githubApiVersion = 'https://api.github.com/repos/Hasenlaeufer/LrMediaWiki/releases',
 	cachedEditToken = nil, -- cached CSRF token to avoid repeated token requests
+	-- OAuth 2.0 bearer token for the current session. nil = classic
+	-- username/password login. Set by MediaWikiInterface.prepareUpload.
+	accessToken = nil,
 }
+
+function MediaWikiApi.setAccessToken(token)
+	MediaWikiApi.accessToken = token
+	-- A bearer token identifies a different user than a previous cookie
+	-- session might have, so any cached CSRF token is worthless now.
+	MediaWikiApi.cachedEditToken = nil
+end
+
+-- Appends the OAuth Authorization header to a header list, if a token is set.
+-- SECURITY: only ever call this for requests that go to MediaWikiApi.apiPath –
+-- never for the GitHub version check, which must not see the token.
+function MediaWikiApi.addAuthHeader(requestHeaders)
+	if MediaWikiApi.accessToken and MediaWikiApi.accessToken ~= '' then
+		requestHeaders[#requestHeaders + 1] = {
+			field = 'Authorization',
+			value = 'Bearer ' .. MediaWikiApi.accessToken,
+		}
+	end
+	return requestHeaders
+end
 
 function MediaWikiApi.httpError(status)
 	LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Api/HttpError=Received HTTP status ^1.", status))
@@ -170,6 +193,7 @@ function MediaWikiApi.performRequest(arguments)
 			value = 'application/x-www-form-urlencoded',
 		},
 	}
+	MediaWikiApi.addAuthHeader(requestHeaders)
 
 	local resultBody = MediaWikiApi.performHttpRequest(MediaWikiApi.apiPath, arguments, requestHeaders, true)
 	local resultXml = MediaWikiApi.parseXmlDom(LrXml.parseXml(resultBody))
@@ -301,6 +325,29 @@ function MediaWikiApi.login(username, password)
 	end
 end
 
+-- Returns the name of the user the current session (cookie or bearer token)
+-- belongs to, or nil if the request is anonymous. Used to confirm an OAuth
+-- login and to show the account name in the export dialog.
+function MediaWikiApi.getLoggedInUser()
+	local arguments = {
+		action = 'query',
+		meta = 'userinfo',
+		format = 'xml',
+	}
+	local ok, xml = pcall(function() return MediaWikiApi.performRequest(arguments) end)
+	if not ok or type(xml) ~= 'table' then
+		return nil
+	end
+	if not (xml.query and xml.query.userinfo) then
+		return nil
+	end
+	local id = xml.query.userinfo.id
+	if id == nil or id == '0' then -- '0' = anonymous, name is the IP address
+		return nil
+	end
+	return xml.query.userinfo.name
+end
+
 function MediaWikiApi.logout()
 -- See https://www.mediawiki.org/wiki/API:Logout
 	local arguments = {
@@ -354,6 +401,7 @@ function MediaWikiApi.getPageContent(page)
 			value = MediaWikiApi.userAgent,
 		},
 	}
+	MediaWikiApi.addAuthHeader(requestHeaders)
 	-- Build the index.php?action=raw URL from the api path
 	-- e.g. https://commons.wikimedia.org/w/api.php -> https://commons.wikimedia.org/w/index.php
 	local indexPath = MediaWikiApi.apiPath:gsub('api%.php', 'index.php')
@@ -524,6 +572,7 @@ function MediaWikiApi.upload(fileName, sourceFilePath, text, comment, ignoreWarn
 			value = MediaWikiApi.userAgent,
 		},
 	}
+	MediaWikiApi.addAuthHeader(requestHeaders)
 
 	-- The multipart upload does not go through performRequest, so it needs its
 	-- own one-time retry on a stale CSRF token (long batches can outlive it).

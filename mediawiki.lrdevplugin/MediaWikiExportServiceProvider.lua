@@ -29,6 +29,7 @@ local bind = LrView.bind
 local Info = require 'Info'
 local MediaWikiApi = require 'MediaWikiApi'
 local MediaWikiInterface = require 'MediaWikiInterface'
+local MediaWikiOAuth = require 'MediaWikiOAuth'
 local MediaWikiUtils = require 'MediaWikiUtils'
 
 local MediaWikiExportServiceProvider = {}
@@ -483,7 +484,88 @@ local showPreview = function(propertyTable)
 	end)
 end
 
+--------------------------------------------------------------------------------
+-- OAuth 2.0 login (see MediaWikiOAuth.lua)
+--------------------------------------------------------------------------------
+
+-- Refreshes the three OAuth-related dialog properties from what is stored.
+-- (Local functions: they are defined before every use site – startDialog and
+-- the button actions in sectionsForTopOfDialog – so no globals are needed.)
+local function updateOAuthStatus(propertyTable)
+	local apiPath = propertyTable.api_path
+	propertyTable.oauth_available = MediaWikiOAuth.isConfigured()
+	if not MediaWikiOAuth.isConfigured() then
+		propertyTable.oauth_logged_in = false
+		propertyTable.oauth_status = LOC "$$$/LrMediaWiki/OAuth/Unconfigured=This build has no OAuth client ID – please use username and password."
+		return
+	end
+	local token = MediaWikiOAuth.loadToken(apiPath)
+	if token then
+		propertyTable.oauth_logged_in = true
+		local name = token.username
+		if name and name ~= '' then
+			propertyTable.oauth_status = LOC("$$$/LrMediaWiki/OAuth/LoggedInAs=Logged in as “^1”. Username and password below are not used.", name)
+		else
+			propertyTable.oauth_status = LOC "$$$/LrMediaWiki/OAuth/LoggedIn=Logged in. Username and password below are not used."
+		end
+	else
+		propertyTable.oauth_logged_in = false
+		propertyTable.oauth_status = LOC "$$$/LrMediaWiki/OAuth/NotLoggedIn=Not logged in – either log in with the browser or enter username and password."
+	end
+end
+
+local function oauthLogin(propertyTable)
+	local apiPath = propertyTable.api_path
+
+	-- The browser page cannot be styled: LrSocket acknowledges every received
+	-- line with "ok" by itself, so that is what the user will see there. Say
+	-- so beforehand, otherwise a successful login looks like a failure.
+	local proceed = LrDialogs.confirm(
+		LOC "$$$/LrMediaWiki/OAuth/AboutTitle=Log in with your Wikimedia account",
+		LOC("$$$/LrMediaWiki/OAuth/AboutText=Your browser will open so you can confirm the access.^n^nAfterwards the browser shows a page containing only the word “ok” several times. That is normal and means it worked – simply switch back to Lightroom.^n^n(Port ^1 on this computer is used briefly for the response.)", tostring(MediaWikiOAuth.port)),
+		LOC "$$$/LrMediaWiki/OAuth/Continue=Open browser",
+		LOC "$$$/LrMediaWiki/Cancel=Cancel")
+	if proceed ~= 'ok' then
+		return
+	end
+
+	propertyTable.oauth_status = LOC "$$$/LrMediaWiki/OAuth/Waiting=Waiting for confirmation in the browser…"
+
+	LrFunctionContext.postAsyncTaskWithContext('LrMediaWikiOAuthLogin', function(context)
+		local ok, message = MediaWikiOAuth.authorize(context, apiPath)
+		if not ok then
+			propertyTable.oauth_status = LOC("$$$/LrMediaWiki/OAuth/Failed=Login failed: ^1", tostring(message))
+			return
+		end
+
+		-- Confirm the token really works and find out who it belongs to.
+		MediaWikiApi.apiPath = apiPath
+		local accessToken = MediaWikiOAuth.getValidAccessToken(apiPath)
+		MediaWikiApi.setAccessToken(accessToken)
+		local user = MediaWikiApi.getLoggedInUser()
+		MediaWikiApi.setAccessToken(nil)
+		if user then
+			MediaWikiOAuth.setStoredUsername(apiPath, user)
+			if MediaWikiUtils.isStringEmpty(propertyTable.username) then
+				propertyTable.username = user
+			end
+		end
+		updateOAuthStatus(propertyTable)
+	end)
+end
+
+local function oauthLogout(propertyTable)
+	MediaWikiOAuth.clearToken(propertyTable.api_path)
+	MediaWikiApi.setAccessToken(nil)
+	updateOAuthStatus(propertyTable)
+end
+
 MediaWikiExportServiceProvider.startDialog = function(propertyTable)
+	updateOAuthStatus(propertyTable)
+	-- Keep the status line in sync when the user switches to another wiki.
+	propertyTable:addObserver('api_path', function()
+		updateOAuthStatus(propertyTable)
+	end)
 	if MediaWikiUtils.isStringFilled(propertyTable.password) then
 		MediaWikiUtils.storePassword(propertyTable.api_path, propertyTable.username, propertyTable.password)
 	else
@@ -516,17 +598,24 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 
 	local exportSettings = assert(exportContext.propertyTable)
 
-	-- require username, apipath, password, source, author, license
-	if MediaWikiUtils.isStringEmpty(exportSettings.username) then
-		LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Export/NoUsername=No username given!")
-	end
 	if MediaWikiUtils.isStringEmpty(exportSettings.api_path) then
 		LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Export/NoApiPath=No API path given!")
 	end
 
-	exportSettings.password = MediaWikiUtils.retrievePassword(exportSettings.api_path, exportSettings.username)
-	if MediaWikiUtils.isStringEmpty(exportSettings.password) then
-		LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Export/NoPassword=No password given!")
+	-- With an OAuth token stored for this wiki, username and password are not
+	-- needed at all; prepareUpload will use the token.
+	local hasOAuth = MediaWikiOAuth.loadToken(exportSettings.api_path) ~= nil
+
+	if not hasOAuth then
+		-- require username, password, source, author, license
+		if MediaWikiUtils.isStringEmpty(exportSettings.username) then
+			LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Export/NoUsername=No username given!")
+		end
+
+		exportSettings.password = MediaWikiUtils.retrievePassword(exportSettings.api_path, exportSettings.username)
+		if MediaWikiUtils.isStringEmpty(exportSettings.password) then
+			LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Export/NoPassword=No password given!")
+		end
 	end
 
 	if MediaWikiUtils.isStringEmpty(exportSettings.info_permission) and MediaWikiUtils.isStringEmpty(exportSettings.info_license) then
@@ -730,6 +819,13 @@ end
 MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, propertyTable)
 	local labelAlignment = 'right'
 
+	-- The OAuth properties are deliberately NOT export preset fields (they
+	-- would end up on disk), so make sure they exist before anything binds to
+	-- them, no matter in which order Lightroom calls startDialog.
+	if propertyTable.oauth_status == nil then
+		updateOAuthStatus(propertyTable)
+	end
+
 	-- The following tooltips are used twice, at the label and at the field. They are set as variables to avoid redundancy.
 	local usernameTooltip = LOC "$$$/LrMediaWiki/Section/LoginInformation/UsernameTooltip=Username^n^nRequired field. Enter the username of your MediaWiki account."
 	local passwordTooltip = LOC "$$$/LrMediaWiki/Section/LoginInformation/PasswordTooltip=Password^n^nRequired field. Enter the password of your MediaWiki account."
@@ -750,6 +846,45 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 		{	-- first section
 			title = LOC "$$$/LrMediaWiki/Section/LoginInformation/Title=LrMediaWiki Login Information",
 			synopsis = bind 'api_path',
+
+			-- OAuth 2.0 login. When a token is stored, username and password
+			-- below are ignored entirely.
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/LoginInformation/OAuth=Wikimedia account" .. ':',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+				},
+				viewFactory:push_button {
+					title = LOC "$$$/LrMediaWiki/Section/LoginInformation/OAuthLogin=Log in with browser…",
+					enabled = bind 'oauth_available',
+					action = function()
+						oauthLogin(propertyTable)
+					end,
+				},
+				viewFactory:push_button {
+					title = LOC "$$$/LrMediaWiki/Section/LoginInformation/OAuthLogout=Log out",
+					enabled = bind 'oauth_logged_in',
+					action = function()
+						oauthLogout(propertyTable)
+					end,
+				},
+			},
+			viewFactory:row {
+				viewFactory:static_text {
+					title = '',
+					alignment = labelAlignment,
+					width = LrView.share 'label_width',
+				},
+				-- Bound static_text titles are proven to update in this SDK
+				-- (bound push_button titles are not), so all OAuth feedback
+				-- goes here.
+				viewFactory:static_text {
+					title = bind 'oauth_status',
+					fill_horizontal = 1,
+					width_in_chars = 55,
+				},
+			},
 
 			viewFactory:row {
 				viewFactory:static_text {
@@ -1283,6 +1418,10 @@ MediaWikiExportServiceProvider.canExportVideo = false
 MediaWikiExportServiceProvider.exportPresetFields = {
 	-- Section Login Information:
 	{ key = 'username', default = '' },
+	-- SECURITY: the OAuth properties ('oauth_status', 'oauth_logged_in',
+	-- 'oauth_available') are deliberately NOT preset fields either – they are
+	-- transient UI state, and the tokens themselves never leave LrPasswords
+	-- (see MediaWikiOAuth.storeToken).
 	-- SECURITY: 'password' is deliberately NOT a preset field. Preset fields
 	-- are persisted in plain text (.lrtemplate / preferences on disk); saving
 	-- a preset while the password field is filled would have written the

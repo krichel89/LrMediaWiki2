@@ -408,7 +408,11 @@ LrFunctionContext.callWithContext('DescriptionFromPersonsDialog',
                             end
                             -- region.link = 'test>' .. region.paratheses
                             if string.match(region.paratheses, "^(User:)") or
-                                string.match(region.paratheses, "^(Benutzerin:") or
+                                -- The pattern below was "^(Benutzerin:" – an
+                                -- UNCLOSED capture that raised "unfinished
+                                -- capture" at runtime for every name with a
+                                -- parenthesized part that was not "User:…".
+                                string.match(region.paratheses, "^(Benutzerin:)") or
                                 string.match(region.paratheses, "^(Benutzer:)") then
                                 region.link = region.paratheses
                             end
@@ -473,7 +477,14 @@ LrFunctionContext.callWithContext('DescriptionFromPersonsDialog',
                     des = u.renderMustache(des, data)
 
                     photo:setRawMetadata('title', des);
-                    photo:setRawMetadata('caption', des:gsub(fname.preName, '')
+                    -- fname.preName is derived from the FILE NAME and must be
+                    -- treated as a literal, not as a pattern. Measured with
+                    -- real names: parentheses or a '-' make the pattern miss
+                    -- its own text (caption silently keeps the prefix), and a
+                    -- name ending in '%' raises "malformed pattern". preName
+                    -- may also be nil for names without digits; the resulting
+                    -- empty pattern leaves des unchanged.
+                    photo:setRawMetadata('caption', des:gsub(u.escapePattern(fname.preName), '')
                                              :match('^%s*(.*%S)') or '');
 
                     if props.description_de then

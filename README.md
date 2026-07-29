@@ -13,7 +13,7 @@ LrMediaWiki2 ist ein Fork der ursprünglichen [LrMediaWiki](https://commons.wiki
 SDC-Aussagen werden als einfache `key=value`-Zeilen im Feld **Wikitext** (Feld-ID `description_all`) geschrieben:
 
 - `caption_xx` – mehrsprachige Bildunterschriften (P2096), beliebige ISO-Codes
-- `depicts` – dargestellte Objekte/Personen (P180), mehrere QIDs mit Semikolon getrennt
+- `depicts` – dargestellte Objekte/Personen (P180), eine Zeile je QID
 - `created_during` – Ereignis (P10408)
 - `creator` – Urheber (P170)
 - `copyright` – Urheberrechtsstatus (P6216)
@@ -22,14 +22,33 @@ SDC-Aussagen werden als einfache `key=value`-Zeilen im Feld **Wikitext** (Feld-I
 Hinter jeder QID kann ein Kommentar zur Lesbarkeit stehen; er wird beim Upload abgeschnitten:
 
 ```
-depicts=Q640 # Harald Krichel; Q42 # Douglas Adams
+depicts=Q640 # Harald Krichel
+depicts=Q42 # Douglas Adams
 ```
 
 Alle Aussagen und Captions werden in einem einzigen `wbeditentity`-Aufruf publiziert, mit einer eigenen P180-Aussage je QID.
 
-### SDC-Editor
+### SDC-Editor im Browser (empfohlen)
 
-Ein Dialog (Bibliothek → Zusatzmoduloptionen) mit Live-Suche auf Wikidata für Depicts und Created during, freien ISO-Code-Slots für Captions, einem Kategorien-Feld und dem freien Wikitext. Depicts können mit einem Haken auf die gesamte Auswahl übertragen werden (fehlende QIDs werden ergänzt, vorhandene bleiben erhalten).
+Bibliothek → Zusatzmoduloptionen → **Edit Structured Data in browser**. Die strukturierten Daten des aktiven Fotos werden in einer Seite im Standardbrowser geöffnet:
+
+- Live-Suche auf Wikidata, Treffer erscheinen von selbst und lassen sich mit den Pfeiltasten durchgehen und per Klick auf den Text übernehmen
+- Übernommene Einträge stehen als Etiketten da (Nummer, Klartext, ✕ zum Entfernen)
+- beliebig viele Sprachzeilen für Bildunterschriften, Sprachcodes frei überschreibbar
+- Kategorien als Etiketten, mit Vorschlägen aus den P373-Angaben der eingetragenen Nummern
+- rechts läuft eine Vorschau des Wikitexts mit, genau so, wie er gespeichert wird
+
+Lightroom ist währenddessen **nicht blockiert** – die Bearbeitung darf beliebig lange dauern. Ein Klick auf „Speichern und zu Lightroom“ lädt eine kleine Datei herunter; Lightroom holt sie sich automatisch aus dem Downloads-Ordner und bestätigt die Übernahme.
+
+Voraussetzung: Der Browser muss Dateien ohne Rückfrage in den Standard-Downloads-Ordner laden. Fragt er nach dem Speicherort, funktioniert es ebenfalls – dann muss dieser Ordner gewählt werden.
+
+### SDC-Editor als Dialog
+
+Bibliothek → Zusatzmoduloptionen → **Edit Structured Data (SDC)**. Der eingebaute Dialog bleibt vollständig erhalten und braucht keinen Browser. Er bietet dieselbe Wikidata-Suche, vier Sprachfelder, das Kategorien-Feld und den freien Wikitext. Depicts können mit einem Haken auf die gesamte Auswahl übertragen werden (fehlende QIDs werden ergänzt, vorhandene bleiben erhalten).
+
+### Suche auf Wikidata
+
+Beide Editoren suchen zuerst über die Präfixsuche. Liefert die zu wenig, wird zusätzlich die Volltextsuche befragt – dadurch werden auch umgestellte Wortfolgen und Ordnungszahlen gefunden, etwa „78th Cannes Film Festival“.
 
 ### Mehrsprachige Wikitext-Beschreibungen
 
@@ -61,7 +80,8 @@ Spezialisierte Sets für verschiedene Inhaltstypen: Wikitext, All Fields, Inform
 ### Anforderungen
 
 - **Adobe Lightroom Classic** (entwickelt und getestet gegen die aktuelle Version; `LrSdkVersion = 6.0`)
-- **Ein Benutzerkonto auf Wikimedia Commons** (oder einem anderen MediaWiki mit aktivierter Structured-Data-Erweiterung). Für den Upload werden lediglich die normalen Upload-Rechte eines angemeldeten Benutzers benötigt – **keine Administratorrechte**. Empfohlen wird ein [BotPassword](https://commons.wikimedia.org/wiki/Special:BotPasswords) statt des Hauptpassworts.
+- **Ein Benutzerkonto auf Wikimedia Commons** (oder einem anderen MediaWiki mit aktivierter Structured-Data-Erweiterung). Für den Upload werden lediglich die normalen Upload-Rechte eines angemeldeten Benutzers benötigt – **keine Administratorrechte**.
+- Zur Anmeldung gibt es zwei Wege: die **Anmeldung über den Browser** (OAuth 2.0, siehe unten) oder Benutzername und Passwort, wofür ein [BotPassword](https://commons.wikimedia.org/wiki/Special:BotPasswords) statt des Hauptpassworts empfohlen wird.
 - **Grundkenntnisse zu Wikidata-QIDs**, wenn SDC-Aussagen gesetzt werden sollen (die eingebaute Suche nimmt einem das Nachschlagen weitgehend ab)
 
 ### Schritt für Schritt
@@ -84,7 +104,11 @@ Spezialisierte Sets für verschiedene Inhaltstypen: Wikitext, All Fields, Inform
 
 3. **Lightroom Classic neu starten** (nötig, damit neue Metadatenfelder und Metadaten-Sets registriert werden).
 
-4. **Zugangsdaten konfigurieren:** Datei → Zusatzmodul-Manager → LrMediaWiki2 → Benutzername und Passwort (bzw. BotPassword) eintragen.
+4. **Anmelden:** Im Export-Dialog im Abschnitt „LrMediaWiki Login Information“ entweder auf **„Mit Browser anmelden“** klicken – dann wird die Anmeldung einmalig im Browser bestätigt und Benutzername und Passwort werden nicht mehr gebraucht – oder Benutzername und BotPassword eintragen.
+
+   Nach dem Bestätigen zeigt der Browser eine Seite, auf der mehrfach „ok“ steht. Das ist normal und bedeutet, dass es geklappt hat; einfach zurück zu Lightroom wechseln.
+
+   Die Zugangsdaten liegen im Schlüsselbund des Betriebssystems, nie in den Voreinstellungen oder in Export-Vorgaben.
 
 5. **Metadaten-Set wählen:** Im Metadaten-Bedienfeld oben das Set „LrMediaWiki – Wikitext" (oder „All Fields") auswählen. Plugin-Felder erscheinen in der Standardansicht nicht automatisch; das ist normales Lightroom-Verhalten.
 
@@ -132,7 +156,7 @@ Das Plugin trennt beim Export automatisch:
 | Schlüssel | Property | Beispiel | Bemerkung |
 |-----------|----------|----------|-----------|
 | `caption_xx` | P2096 | `caption_en=...` | Bildunterschrift, beliebiger ISO-Code |
-| `depicts` | P180 | `Q640; Q42` | Mehrere QIDs, Semikolon-getrennt; je QID eine eigene Aussage |
+| `depicts` | P180 | `depicts=Q640` | Eine Zeile je QID; je QID eine eigene Aussage. Eine ältere Zeile mit Semikolons wird weiterhin gelesen |
 | `created_during` | P10408 | `Q124692383` | Ereignis, eine QID |
 | `creator` | P170 | `Q640` | Urheber |
 | `copyright` | P6216 | `Q73566113` | Urheberrechtsstatus |
@@ -152,10 +176,13 @@ mediawiki.lrdevplugin/
 ├── MediaWikiExportServiceProvider.lua # Export-Dialog und Export-Ablauf
 ├── MediaWikiInterface.lua             # Aufbau der Dateibeschreibung, SDC-Extraktion
 ├── MediaWikiApi.lua                   # API-Aufrufe (Login, Upload, wbeditentity)
+├── MediaWikiOAuth.lua                 # Anmeldung über den Browser (OAuth 2.0, PKCE)
 ├── MediaWikiMetadataProvider.lua      # Definition der Metadatenfelder
 ├── MediaWikiMetadataSet*.lua          # Metadaten-Sets für das Bedienfeld
 ├── MediaWikiUtils.lua                 # Hilfsfunktionen
-├── ToolEditSdc.lua                    # SDC-Editor
+├── ToolEditSdc.lua                    # SDC-Editor als Dialog
+├── ToolEditSdcWeb.lua                 # SDC-Editor im Browser
+├── SdcEditorTemplate.lua              # die Editorseite (maschinell erzeugt)
 ├── ToolConvertDescriptionAll.lua      # Konverter Einzelfelder ↔ Wikitext
 └── Tool*.lua                          # weitere Batch-Werkzeuge
 ```
