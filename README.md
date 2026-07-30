@@ -42,6 +42,43 @@ Lightroom ist währenddessen **nicht blockiert** – die Bearbeitung darf belieb
 
 Voraussetzung: Der Browser muss Dateien ohne Rückfrage in den Standard-Downloads-Ordner laden. Fragt er nach dem Speicherort, funktioniert es ebenfalls – dann muss dieser Ordner gewählt werden.
 
+### Hintergrund-App (SDC-Brücke)
+
+Der Editor im Browser kann auch dauerhaft offen bleiben und dem Fotowechsel in
+Lightroom folgen. Dazu läuft eine kleine Hintergrund-App, die die Editorseite
+unter `http://127.0.0.1:PORT/` ausliefert. Weil die Seite damit eine echte
+Herkunft hat, kann sie ohne Umwege mit Lightroom sprechen; der frühere Weg über
+eine `file://`-Seite war daran gescheitert.
+
+Ein- und ausgeschaltet wird die Brücke über Bibliothek oder Datei,
+Zusatzmoduloptionen, Eintrag "Hintergrund-App (SDC-Brücke)". Ist sie an, wird
+die Seite beim Fotowechsel ohne Neuladen aktualisiert, und Speichern schreibt
+direkt in den Katalog. Ist sie aus, bleibt alles beim Dateiweg über den
+Download-Ordner.
+
+Lightroom selbst lauscht dabei auf keinem Port, sondern ruft nur ausgehend an
+(einmal pro Sekunde). Die App bindet ausschließlich an 127.0.0.1, verlangt zu
+jeder Anfrage ein Sitzungstoken, prüft den Host-Kopf gegen DNS-Rebinding und
+beendet sich selbst, wenn drei Minuten lang kein Lebenszeichen aus Lightroom
+kommt.
+
+Der Quelltext der App ist `bridge/sdcbridge.go` (eine Datei, Go, nur
+Standardbibliothek). Die fertigen Programme fuer macOS arm64, macOS x86_64 und
+Windows x86_64 liegen im Ordner `mediawiki.lrdevplugin/bin` und sind Teil des
+Release-ZIPs, aber **absichtlich nicht versioniert**. Wer aus dem Quelltext
+arbeitet, erzeugt sie mit
+
+```
+./baue-bruecke.sh
+```
+
+Dafuer wird nur die Go-Werkzeugkette gebraucht; heruntergeladen wird nichts.
+Fehlt der Ordner `bin`, meldet das Zusatzmodul das verstaendlich und der
+Dateiweg funktioniert unveraendert weiter.
+
+Die Programme sind **nicht signiert**: unter macOS muss die Freigabe beim
+ersten Start einmal erteilt werden, unter Windows kann SmartScreen anspringen.
+
 ### Suche auf Wikidata
 
 Der Editor sucht zuerst über die Präfixsuche. Liefert die zu wenig, wird zusätzlich die Volltextsuche befragt – dadurch werden auch umgestellte Wortfolgen und Ordnungszahlen gefunden, etwa „78th Cannes Film Festival“.
@@ -176,10 +213,27 @@ mediawiki.lrdevplugin/
 ├── MediaWikiMetadataProvider.lua      # Definition der Metadatenfelder
 ├── MediaWikiMetadataSet*.lua          # Metadaten-Sets für das Bedienfeld
 ├── MediaWikiUtils.lua                 # Hilfsfunktionen
-├── ToolEditSdcWeb.lua                 # SDC-Editor im Browser
+├── ToolEditSdcWeb.lua                 # SDC-Editor im Browser (Dateiweg)
 ├── SdcEditorTemplate.lua              # die Editorseite (maschinell erzeugt)
+├── MediaWikiSdcData.lua               # gemeinsame Datenlogik beider Wege
+├── MediaWikiSdcBridge.lua             # Lightroom-Seite der Hintergrund-App
+├── ToolSdcBridge.lua                  # Hintergrund-App ein- und ausschalten
+├── bin/                               # die gebauten Programme (nicht versioniert)
+│   ├── sdcbridge-mac-arm64
+│   ├── sdcbridge-mac-x86_64
+│   └── sdcbridge-win-amd64.exe
 ├── ToolConvertDescriptionAll.lua      # Konverter Einzelfelder ↔ Wikitext
 └── Tool*.lua                          # weitere Batch-Werkzeuge
+```
+
+Außerhalb des Zusatzmodul-Ordners:
+
+```
+baue-bruecke.sh         # baut die Hintergrund-App für alle Zielplattformen
+bridge/sdcbridge.go     # Quelltext der Hintergrund-App (Go, keine Abhängigkeiten)
+editor/sdc-editor.html  # Quelle der Editorseite
+tools/gen-template.lua  # erzeugt SdcEditorTemplate.lua aus der HTML-Datei
+tools/check-template.lua# prüft beide auf Byte-Gleichheit
 ```
 
 ---

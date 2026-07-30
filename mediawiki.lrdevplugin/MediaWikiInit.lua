@@ -53,6 +53,45 @@ local function isNewerVersion(available, installed)
 end
 
 
+-- Start the SDC background bridge if the user switched it on. Opt-in: a
+-- fresh installation launches nothing on its own.
+--
+-- Its own async task, because ensureRunning PAUSES (it starts a process and
+-- then waits for the port file) and must not hold up the version check or
+-- the rest of plug-in loading. No pcall anywhere above it, for the same
+-- reason - in Lua 5.1 nothing can pause across a C function, and pcall is
+-- one.
+LrTasks.startAsyncTask(function()
+	local okLoad, bridge = pcall(function() return require 'MediaWikiSdcBridge' end)
+	if not okLoad or type(bridge) ~= 'table' then
+		MediaWikiUtils.trace('SDC bridge autostart: module could not be loaded')
+		return
+	end
+	-- isEnabled only reads preferences and does not pause, so the pcall
+	-- around the require above is harmless here.
+	if not bridge.isEnabled() then
+		MediaWikiUtils.trace('SDC bridge autostart: switched off, nothing started')
+		return
+	end
+
+	-- Give Lightroom a moment to finish starting up before we launch a
+	-- process and wait for its port file. LrTasks.sleep PAUSES, which is
+	-- fine here and would not be inside a pcall.
+	LrTasks.sleep(3)
+
+	MediaWikiUtils.trace('SDC bridge autostart: starting')
+	if bridge.ensureRunning() then
+		MediaWikiUtils.trace('SDC bridge autostart: up on port ' .. tostring(bridge.port))
+	else
+		-- Deliberately no dialog. An error box in front of a just-opened
+		-- Lightroom would be a nuisance, and the file route still works;
+		-- the state is visible in the bridge dialog and in the log.
+		MediaWikiUtils.trace('SDC bridge autostart: failed – '
+			.. tostring(bridge.lastError or 'reason unknown'))
+	end
+end)
+
+
 if MediaWikiUtils.getCheckVersion() then
 	LrTasks.startAsyncTask(function()
 	-- local installedFullVersion = MediaWikiUtils.getVersionString()

@@ -1,0 +1,39 @@
+name: Pruefung
+
+# Laeuft bei jedem Push und bei jedem Pull Request. Baut nichts aus, sondern
+# prueft: Lua-Syntax, die vier Audits, Byte-Gleichheit von Editorseite und
+# Vorlage, go vet, und den echten HTTP-Umlauf der Hintergrund-App.
+#
+# Die drei Testreihen (test_sdcdata_pure.lua, test_bridge_js.js,
+# test_compose_js.js) liegen bewusst nicht im Repo und werden hier
+# uebersprungen. Legt man sie unter tests/ ab, laufen sie ohne weitere
+# Aenderung mit.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruefung:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lua 5.1 ist genau die Fassung, die im Lightroom-SDK steckt. Eine
+      # neuere waere wertlos: der Code darf 5.2-Syntax gar nicht enthalten.
+      - name: Lua 5.1 einrichten
+        run: sudo apt-get update -qq && sudo apt-get install -y lua5.1
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Pruefskript
+        run: ./pruefe-alles.sh

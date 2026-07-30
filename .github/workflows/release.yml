@@ -1,0 +1,161 @@
+name: Release
+
+# Laeuft, wenn ein Tag vX.Y.Z gepusht wird, und legt das GitHub-Release mit
+# beiden Paketen an.
+#
+# WARUM macOS ALS LAEUFER: nur dort gibt es `lipo`, und nur damit entsteht die
+# universelle Mac-Fassung der Hintergrund-App, die auf Apple Silicon und Intel
+# laeuft. Go selbst kreuzkompiliert die Windows-Fassung auf demselben Laeufer
+# gleich mit.
+#
+# SIGNIEREN UND NOTARISIEREN passiert nur, wenn die Geheimnisse gesetzt sind.
+# Ohne sie laeuft alles durch, die Programme sind dann eben unsigniert und
+# macOS fragt beim ersten Start nach. Noetig waeren:
+#   MACOS_CERT_P12        Developer-ID-Application-Zertifikat, base64
+#   MACOS_CERT_PASSWORD   Kennwort des p12
+#   MACOS_SIGN_IDENTITY   z. B. "Developer ID Application: Name (TEAMID)"
+#   MACOS_NOTARY_APPLE_ID Apple-ID
+#   MACOS_NOTARY_PASSWORD app-spezifisches Kennwort
+#   MACOS_NOTARY_TEAM_ID  Team-ID
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    env:
+      # Auf JOB-Ebene, damit der Wert im "if" eines Schrittes sichtbar ist -
+      # der eigene env-Block eines Schrittes ist das nicht.
+      HAT_ZERTIFIKAT: ${{ secrets.MACOS_CERT_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # cache: false, weil die Bruecke keine Abhaengigkeiten hat und es
+      # folglich kein go.sum gibt - mit eingeschaltetem Zwischenspeicher
+      # sucht setup-go danach und bricht ab.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Version aus Info.lua lesen
+        id: version
+        run: |
+          set -euo pipefail
+          IL=mediawiki.lrdevplugin/Info.lua
+          MA=$(sed -n 's/.*major *= *\([0-9]*\).*/\1/p' "$IL" | head -1)
+          MI=$(sed -n 's/.*minor *= *\([0-9]*\).*/\1/p' "$IL" | head -1)
+          RE=$(sed -n 's/.*revision *= *\([0-9]*\).*/\1/p' "$IL" | head -1)
+          V="$MA.$MI.$RE"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version laut Info.lua: $V"
+
+      # Der haeufigste Fehler beim Veroeffentlichen: Tag und Info.lua gehen
+      # auseinander. Lieber hier abbrechen als ein falsch benanntes Release.
+      - name: Tag gegen Info.lua pruefen
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          ERWARTET="v${{ steps.version.outputs.version }}"
+          if [ "$TAG" != "$ERWARTET" ]; then
+            echo "Tag $TAG passt nicht zu Info.lua ($ERWARTET)." >&2
+            exit 1
+          fi
+          echo "Tag und Info.lua stimmen überein: $TAG"
+
+      - name: Hintergrund-App bauen
+        run: ./baue-bruecke.sh
+
+      - name: Universelle Mac-Fassung vorhanden?
+        run: |
+          set -euo pipefail
+          B=mediawiki.lrdevplugin/bin
+          if [ -f "$B/sdcbridge-mac" ]; then
+            echo "universell:"; lipo -info "$B/sdcbridge-mac"
+          else
+            echo "Keine universelle Fassung - lipo hat nicht gegriffen." >&2
+            exit 1
+          fi
+          file "$B/sdcbridge-win-amd64.exe"
+
+      - name: Signieren und notarisieren
+        if: env.HAT_ZERTIFIKAT == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          B=mediawiki.lrdevplugin/bin
+          # Wegwerf-Schluesselbund, damit nichts im Standardbund liegenbleibt.
+          KB=$RUNNER_TEMP/build.keychain
+          security create-keychain -p act "$KB"
+          security default-keychain -s "$KB"
+          security unlock-keychain -p act "$KB"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KB" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k act "$KB" >/dev/null
+          # Ein Kommandozeilenprogramm braucht die Laufzeitabsicherung
+          # (hardened runtime), sonst lehnt die Notarisierung ab.
+          codesign --force --timestamp --options runtime \
+            --sign "$MACOS_SIGN_IDENTITY" "$B/sdcbridge-mac"
+          codesign --verify --strict --verbose=2 "$B/sdcbridge-mac"
+          # Notarisiert wird ein ZIP, angeheftet wird danach nichts: an eine
+          # einzelne Binaerdatei laesst sich kein Ticket heften. Gatekeeper
+          # fragt online nach - das genuegt fuer den ersten Start.
+          ditto -c -k --keepParent "$B/sdcbridge-mac" "$RUNNER_TEMP/bridge.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/bridge.zip" \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" \
+            --team-id "$MACOS_NOTARY_TEAM_ID" --wait
+          security delete-keychain "$KB"
+
+      - name: Pakete bauen
+        run: ./packe.sh dist
+
+      - name: Release-Notizen aus SDC-CHANGES.md schneiden
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          awk -v v="## Version $V" '
+            index($0, v) == 1 { drin = 1; print; next }
+            drin && /^## / { exit }
+            drin { print }
+          ' SDC-CHANGES.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            printf 'LrMediaWiki2 %s\n' "$V" > "$RUNNER_TEMP/notes.md"
+            echo "Kein Abschnitt '## Version $V' gefunden - Ersatznotiz."
+          fi
+          wc -c < "$RUNNER_TEMP/notes.md"
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          gh release create "v$V" \
+            --title "LrMediaWiki2 $V" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "dist/LrMediaWiki2-$V.zip#Zusatzmodul zum Installieren" \
+            "dist/LrMediaWiki2-complete-$V.zip#Alles inklusive Quelltext"
+
+      # Auch ohne Tag nuetzlich: die Pakete haengen am Lauf und lassen sich
+      # herunterladen, etwa zum Ausprobieren vor dem Veroeffentlichen.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pakete
+          path: dist/*.zip

@@ -1,5 +1,256 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.43 (July 2026)
+
+**Why the stale-tab banner never appeared.** The keepalive in the event stream
+was a comment line, `: ping`, sent every 20 seconds. It kept the connection
+alive, which was its job - but `EventSource` does not deliver comment lines to
+the page. So the page had nothing to notice, no `error` fired, and after a
+Lightroom restart the old tab still looked current. The 2.0.42 banner was
+correct code wired to an event that could never arrive.
+
+Worse, the interesting case was invisible by design: when Lightroom quits, the
+helper keeps running for three more minutes. The stream stays open the whole
+time, so "bridge alive" and "Lightroom alive" are not the same thing and the
+page was only ever able to observe the first.
+
+The keepalive is now a named `hb` event every five seconds carrying `lrIdle` -
+how long since Lightroom last called in. The page keeps its own watchdog: no
+heartbeat for twelve seconds means the bridge is gone; heartbeats arriving with
+`lrIdle` above ten seconds mean Lightroom is gone while the bridge lives on.
+Both get a banner, with different text, because the situations differ: a dead
+bridge can be restarted, whereas a restarted Lightroom is already on a new port
+and that tab is beyond saving.
+
+The decision is a pure function, `staleVerdict`, tested outside the browser with
+twelve assertions - including the case that was previously undetectable.
+
+**The Mac no longer tries both binaries.** Until now, with no architecture
+detection, the arm64 build was started first and the x86_64 build after it if no
+port file appeared. That is nonsense: a build for the wrong architecture cannot
+run, and the attempt only costs seconds.
+
+Two changes. `baue-bruecke.sh` now runs `lipo` over the two slices and ships a
+single universal `sdcbridge-mac`, so on a Mac there is only one program and
+nothing to detect. If `lipo` is unavailable the slices stay, and the plug-in
+picks the right one from `uname -m`. With a known architecture exactly one
+candidate is offered; two are tried only when the architecture cannot be
+determined at all. `macOrder` is pure and has fifteen assertions.
+
+**A latent crash caught on the way.** The new architecture code called
+`readFile()` from line 107, but `readFile` is a `local function` defined at line
+156. A `local function` is only visible from its definition onwards, so that
+call would have reached for a global, found `nil`, and aborted at runtime -
+something `luac -p` does not detect. New check stage 4c scans every plug-in file
+for exactly this pattern; it was verified against the real defect before the
+fix went in.
+
+## Version 2.0.42 (July 2026)
+
+**The bridge dialog said two things that read like a contradiction.** "Zustand:
+eingeschaltet" right above "Läuft gerade nicht", with buttons labelled
+"Ausschalten" and "Jetzt starten" that gave no hint which of the two they
+touched. The two states are genuinely different things and the text never said
+so:
+
+- *dauerhaft eingeschaltet* is a preference. It survives a restart and decides
+  whether the app comes up automatically when Lightroom starts.
+- *jetzt aktiv* is whether the process is running in this Lightroom session.
+
+Switched on but not active is a perfectly normal combination - after a failed
+start, or after stopping it for this session. The dialog now spells both lines
+out with a parenthesis explaining what each means, and the buttons name the
+level they act on: "Dauerhaft einschalten und jetzt starten", "Dauerhaft
+ausschalten und anhalten", "Jetzt starten (bleibt eingeschaltet)".
+
+**A stale browser tab now says so.** The page cannot be closed when Lightroom
+quits, so it has to be honest about its own state instead. There is a small pill
+in the header - connected / connection lost / file route - and, when the stream
+breaks, a red banner above the content explaining what happened, that the page
+no longer follows the photo selection, and that saving now writes a file instead
+of going into the catalogue. A stale tab that looks like a live one is the most
+dangerous display of all, which is why this is deliberately loud rather than
+subtle.
+
+**Autostart was already there and is now traceable.** `MediaWikiInit.lua` has
+launched the bridge on plug-in load since 2.0.37 whenever it was switched on.
+What was missing was any way to tell whether it had run: it now writes to the
+trace log in every case - off, started, or failed with the reason. It also waits
+three seconds first, so it does not compete with the rest of Lightroom's
+startup, and it deliberately shows no dialog on failure: an error box in front
+of a just-opened Lightroom would be a nuisance while the file route keeps
+working.
+
+## Version 2.0.41 (July 2026)
+
+**Captions and description composed from depicts and created_during.** A new
+"Satzbau" section with a compose button. Captions are filled for every language
+that already has one - Harald's choice, no fixed list - and the description gets
+one `{{lang|1=...}}` block per language with interwiki links.
+
+The linking uses Wikidata sitelinks, so a link appears only where the article
+actually exists; nothing is guessed from the label. The form follows the Commons
+layout guide: `[[:de:Article|Label]]`, with the leading colon. Where title and
+label are identical the short `[[:de:Article]]` is used.
+
+**Inflection.** A connector is learned per event and language ("Q3003|de" ->
+"bei der"), shown as one editable row per target language. Where no connector is
+known the case-free form "Name, Event" is used - being plain beats being
+grammatically wrong. Labels are frozen into the wikitext rather than resolved
+live by a template, because a learned connector has to agree with the label that
+actually ends up on the page: if Wikidata's label changed later, live resolution
+would silently break the grammar of files uploaded long ago.
+
+Persons come first in the sentence, identified by P31 = Q5 from the same API
+call that fetches labels and sitelinks. List conjunctions are per language ("und"
+/ "and" / "et"), falling back to commas for languages not in the table.
+
+**The connectors live in the Lightroom preferences**, travel to the page in the
+payload and come back with the result. Deliberately not in browser storage: the
+bridge gets a new port on every start, the port is part of the origin, so that
+store would be empty every time.
+
+`mergeConnectors` validates every key against `Qn|lang` and drops anything else,
+so a malformed page cannot write junk into the preferences. An emptied value
+means "forget this one".
+
+**The description block is fenced by markers** and only that region is replaced,
+so hand-written wikitext around it always survives. `merge` now sets the markers
+itself instead of trusting the caller - a test showed that a caller who forgets
+them loses them permanently, after which every run appends instead of replacing.
+
+New test stage 7b: 44 assertions against the composition logic, cut verbatim
+from the page. Fourteen more in the Lua tests for `mergeConnectors`.
+
+## Version 2.0.40 (July 2026)
+
+**Copy button under the preview.** The "what will be saved" panel now has a
+small icon button that copies the wikitext to the clipboard. Icon only; the
+label lives in `title` and in `aria-label`, both filled from the string table,
+so it is translated and not silent for screen readers. `applyStrings` learned a
+new marker, `data-i18n-title`, for exactly that.
+
+All copying now goes through one function that prefers
+`navigator.clipboard.writeText` and falls back to the old
+textarea-plus-`execCommand` trick. The clipboard API only exists in a secure
+context: `http://127.0.0.1` counts as secure, a page opened as a file does not
+always. The existing button in the save panel was rewired to the same function,
+which also fixes it for the file route.
+
+**Also fixed: test stage 7 was reading the wrong file.** It read a copy of
+`sdc-editor.html` that sat in the working directory rather than the one in the
+repository. The copy had been frozen since 2.0.37, so the stage was passing
+against a page three versions old - exactly the failure that building extracts
+fresh is supposed to prevent. The path now points into the repository and the
+stale copy is gone. It immediately reported the new string key, which the old
+path had missed.
+
+## Version 2.0.39 (July 2026)
+
+**The helper now logs what it is asked.** Until now the bridge log held only
+the startup line, which made "the request was rejected" indistinguishable from
+"the request never arrived". Two rounds of debugging hung on exactly that gap.
+
+Every request is logged with method, path, status and size, plus an explicit
+line when a result is accepted from the page and another when it is handed to
+Lightroom. Successful, uneventful `/sync` calls stay silent - they arrive once
+a second and would bury everything else within the hour. Every non-200 is
+logged, including the 403s from a missing token.
+
+The wrapper needed for this passes `Flush` through. Without that the
+Server-Sent-Events stream would have gone dead, because `/events` depends on
+the response writer being an `http.Flusher` and an ordinary wrapper hides that.
+The functional test counts stream events and would have caught it.
+
+No behaviour changed otherwise.
+
+## Version 2.0.38 (July 2026)
+
+**The bridge never started, and the bridge was innocent.** 2.0.37 always
+reported "the background app is running but does not answer on port N" and fell
+back to the file route. The helper was answering correctly the whole time; the
+Lightroom side misread the answer.
+
+`LrHttp.get` returns `(body, headers)`, not `(body, status)`. The probe named
+the second value `status` and compared it to 200 - a table against a number,
+which is never equal, so the check failed every single time. The POST helper
+twelve lines above got it right, and `MediaWikiApi.lua` has been doing it right
+for years: the status lives in `headers.status`.
+
+The same broken probe was also used to detect an already-running helper, so
+that path was dead too and a stale bridge would have been launched a second
+time.
+
+The probe now also writes to the trace log when it fails, with the status it
+actually saw and, if the status was fine, the body it did not recognise. The
+original failure gave no clue which of the two had gone wrong.
+
+**A lint rule so this class of bug cannot ship again.** `pruefe-alles.sh` grew
+a stage that rejects any `local x, status = LrHttp.` in the plug-in folder. It
+was verified in both directions: it passes on the fixed file and fails on the
+2.0.37 line.
+
+## Version 2.0.37 (July 2026)
+
+**The background bridge.** The browser editor can now stay open and follow the
+photo selection in Lightroom. A small helper (`bridge/sdcbridge.go`, one Go
+file, standard library only) serves the editor page from
+`http://127.0.0.1:PORT/`. Because the page then has a real origin, it can use
+fetch and Server-Sent-Events without CORS and without the Private-Network
+block that killed the earlier loopback attempt from a `file://` page.
+
+Lightroom never listens. Once a second it calls `POST /sync`, which pushes the
+current photo's data when the selection changed, collects any pending result in
+the same response, and doubles as the heartbeat. Both directions are outgoing
+`LrHttp` calls, which are long proven in this plugin; `LrSocket` is not used at
+all.
+
+New files: `MediaWikiSdcBridge.lua` (Lightroom side), `ToolSdcBridge.lua`
+(switch it on and off), `MediaWikiSdcData.lua`. The last one is a genuine
+de-duplication: the payload building and result applying logic used to exist
+twice, once in `ToolEditSdcWeb.lua` and once in the bridge, so a change to the
+data model could land in only one of them. Both routes now share one module.
+`schemaVersion` is unchanged.
+
+**The file route stays.** Anyone who does not run the helper keeps the download
+mechanism from 2.0.31 exactly as it was. The bridge is off until switched on.
+
+**Safety.** The helper binds to 127.0.0.1 only, never to all interfaces. Every
+request must carry a session token that Lightroom generates fresh on each
+start; the comparison is constant-time. The Host header must name a loopback
+address, which defeats DNS rebinding from a hostile page. There is no SDK hook
+for unloading a plug-in, so the helper terminates itself after three minutes
+without a heartbeat and removes its port file.
+
+**A result is never written to the wrong photo.** If the user moved on in
+Lightroom between opening the page and pressing save, the photo key no longer
+matches and nothing is written; a dialog says so.
+
+**Architecture selection without guessing.** Both macOS builds ship. Rather
+than detecting the CPU (there is no documented SDK call, and shelling out to
+`uname -m` would be another unverifiable moving part), the launcher simply
+tries the arm64 build first with a short timeout and moves on to the x86_64
+build if no port file appears. A build the machine cannot run therefore costs a
+few seconds once instead of failing outright.
+
+**Not signed.** The shipped binaries carry no signature or notarisation, so
+macOS will ask once on first launch and Windows SmartScreen may warn. That has
+to be sorted out before wider distribution.
+
+**The binaries are not versioned.** `mediawiki.lrdevplugin/bin/` is ignored;
+the Go source is in the repository and `./baue-bruecke.sh` produces the three
+builds before packing. Git cannot delta-compress binaries, so committing them
+would add roughly five megabytes of new objects per platform per release to a
+history that can never be trimmed without rewriting every hash. A notarised
+binary is also not byte-identical to the built one, so a committed binary would
+only look like provenance.
+
+**Fixed while we were in there: `.gitignore` never worked.** Every rule was
+wrapped in double quotes (`".DS_Store"` and so on). Git treats quotes as
+literal characters, so the file matched nothing and `.DS_Store` had been
+shipping inside the release ZIPs. The rules are now unquoted and verified
+against `git check-ignore`.
+
 ## Version 2.0.36 (July 2026)
 
 **The built-in SDC dialog is gone.** `ToolEditSdc.lua` has been removed and
