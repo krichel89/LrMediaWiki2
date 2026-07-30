@@ -727,6 +727,12 @@ function wireSearch(inputId, listId, onPick){
       b.querySelector(".qid").textContent = h.id;
       b.querySelector(".lab").textContent = h.label || h.id;
       b.querySelector(".desc").textContent = h.description || "";
+      // Der Zeiger darf dem Eingabefeld NICHT den Fokus nehmen: sonst feuert
+      // dessen blur, der Zeitgeber unten ruft close(), close() leert die
+      // Liste -- und der Knopf ist aus dem Dokument verschwunden, bevor sein
+      // click ueberhaupt entsteht. preventDefault auf mousedown verhindert
+      // den Fokuswechsel vollstaendig.
+      b.addEventListener("mousedown", function(ev){ ev.preventDefault(); });
       b.addEventListener("click", function(){ take(h); });
       list.appendChild(b);
     });
@@ -783,7 +789,12 @@ function wireSearch(inputId, listId, onPick){
       close();
     }
   });
-  input.addEventListener("blur", function(){ setTimeout(close, 180); });
+  input.addEventListener("blur", function(ev){
+    // Zweite Absicherung fuer Wege, auf denen der Fokus doch in die Liste
+    // wandert (Tastatur, Touch, Browser ohne Wirkung von preventDefault).
+    if (ev && ev.relatedTarget && list.contains(ev.relatedTarget)) { return; }
+    setTimeout(close, 180);
+  });
 }
 
 /* ---------------------------------------------------------------------------

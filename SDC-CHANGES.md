@@ -1,5 +1,23 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.51 (July 2026)
+
+**Clicking a search hit did not apply the QID** (reported on Windows; keyboard
+selection with the arrow keys and Enter was unaffected).
+
+Pressing the mouse button on a hit moves the focus away from the search input.
+That fires the input's `blur`, which schedules `close()` 180 ms later, and
+`close()` empties the result list. A `click` event only exists if the element is
+still in the document when the button is released - so whenever press and
+release together took longer than 180 ms, the button was gone and the click was
+never delivered. On macOS the same code works because buttons there do not take
+focus on click at all, so no `blur` ever fires.
+
+The hit buttons now call `preventDefault()` on `mousedown`, which suppresses the
+focus change entirely; the input keeps focus and the list is never torn down
+underneath the pointer. The `blur` handler additionally ignores focus moves that
+land inside the result list.
+
 ## Version 2.0.50 (July 2026)
 
 **Check stage 9 only ever worked on Linux.** It built the helper with a fixed
