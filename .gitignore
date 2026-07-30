@@ -22,5 +22,6 @@ bridge/sdcbridge
 bridge/sdcbridge.exe
 bridge/*.test
 
-# Auslieferungspakete
-LrMediaWiki2-complete-*.zip
+# Auslieferungspakete. packe.sh legt beide in dist/ ab.
+dist/
+LrMediaWiki2-*.zip

@@ -230,6 +230,9 @@ Außerhalb des Zusatzmodul-Ordners:
 
 ```
 baue-bruecke.sh         # baut die Hintergrund-App für alle Zielplattformen
+packe.sh                # schnürt beide Auslieferungspakete
+pruefe-alles.sh         # alle Prüfstufen in einem Lauf
+release.sh              # committen, taggen, pushen, GitHub-Release
 bridge/sdcbridge.go     # Quelltext der Hintergrund-App (Go, keine Abhängigkeiten)
 editor/sdc-editor.html  # Quelle der Editorseite
 tools/gen-template.lua  # erzeugt SdcEditorTemplate.lua aus der HTML-Datei

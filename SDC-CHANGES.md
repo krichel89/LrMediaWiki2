@@ -1,5 +1,95 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.47 (July 2026)
+
+**Restores the origin check that 2.0.46 lost.** When `release.sh` moved into the
+repository it was rewritten from scratch, and the divergence check added after
+the rejected push did not come along. Without it the situation that cost an
+afternoon returns: the mismatch only surfaces at push time, by which point the
+commit and the tag are already set and have to be unpicked.
+
+Stage 0b runs before building, committing and tagging. It fetches, counts both
+directions, and stops if origin is ahead - listing the foreign commits and
+suggesting `merge --ff-only` or `pull --rebase` depending on whether anything is
+open locally, with the reminder that a tag set before a rebase keeps pointing at
+the old commit.
+
+The push step no longer dies silently under `set -e` either: a rejection now
+names the state and what to do about it.
+
+Both packages are copied back to the download folder again, which is where the
+deployment script on the other machine picks them up.
+
+## Version 2.0.46 (July 2026)
+
+**`release.sh` now lives in the repository**, next to `baue-bruecke.sh`,
+`packe.sh` and `pruefe-alles.sh`. It defaults to its own directory as the
+repository to publish, and it no longer builds the archive itself - that job
+went to `packe.sh`, which is now the single place where packages are made,
+locally and in CI alike. Both packages are attached to the release and both are
+copied back to the download folder.
+
+**The local deployment script does nothing with git any more.** It syncs a
+package into a test installation, clears the macOS quarantine flag, and stops
+there. No commit, no tag, no release, not even a `git status`. The split is
+clean now: one script moves files, the other publishes.
+
+**A hazard that the second package format introduced, caught before shipping.**
+The deployment script mirrors with `--delete`. A user package contains only
+`mediawiki.lrdevplugin`, so mirroring one onto a full repository tree would have
+deleted `README.md`, `bridge/`, `editor/` and `tools/` along the way. The script
+now recognises which of the two package types it has and pairs it with the
+target layout: a user package landing on a repository tree is written into the
+`mediawiki.lrdevplugin` subfolder only, never over the root. All four
+combinations were run through.
+
+## Version 2.0.45 (July 2026)
+
+*(2.0.44 was built but never published: the release attempt ran into a diverged
+remote, and it was simpler to skip the number than to untangle a half-set tag.
+Everything below was written for 2.0.44 and ships here.)*
+
+
+**Two release packages instead of one.** `LrMediaWiki2-<version>.zip` contains
+exactly one folder, `mediawiki.lrdevplugin`, and nothing else. Unpack, add it in
+Lightroom, done. The old single archive also carried the Go source, the editor
+page, the build scripts and four developer documents - a user had to work out
+which of eleven entries was the plug-in. `LrMediaWiki2-complete-<version>.zip`
+still contains everything.
+
+`packe.sh` builds both, so local and CI produce the same thing. It refuses to
+finish if the user package has more than one top-level entry, if `Info.lua` is
+missing, or if the Go source leaked into it.
+
+**Building in GitHub Actions.** Two workflows. `pruefung.yml` runs the check
+script on every push. `release.yml` runs on a `v*` tag: it builds the bridge,
+verifies that `lipo` really produced a universal binary, assembles both
+packages, cuts the notes out of this file and creates the release. It runs on
+macOS because `lipo` exists nowhere else; Go cross-compiles the Windows build on
+the same runner.
+
+Signing and notarisation are wired up but only run when the secrets are set.
+Without them everything still passes and the binaries are simply unsigned. Note
+`--options runtime` on the codesign call: notarisation rejects a command-line
+binary without the hardened runtime.
+
+`pruefe-alles.sh` moved into the repository so that CI and a local run use the
+same script. The three test suites are still kept outside the repository, so
+each of those stages is now skipped with a note rather than failing. Six stages
+run in CI today; putting the test files under `tests/` would bring the rest with
+no further change.
+
+**Installation.md rewritten.** It documented v2.0.0, recommended a bot password
+that OAuth replaced in 2.0.15, and carried 44 emoji. The new text has none, and
+it states plainly that the background app is optional - which is the honest
+answer to "the installation feels complicated": the file route needs no setup at
+all.
+
+**Still open, and it needs a decision.** The macOS quarantine flag is applied by
+the browser when the user downloads the archive, so nothing done at build time
+removes it. Only notarisation does. Until the secrets exist, the instructions
+have to carry that step.
+
 ## Version 2.0.43 (July 2026)
 
 **Why the stale-tab banner never appeared.** The keepalive in the event stream
