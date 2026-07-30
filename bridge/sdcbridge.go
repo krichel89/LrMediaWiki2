@@ -312,6 +312,7 @@ func (b *bridge) handleResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.putResult(body)
+	log.Printf("Ergebnis von der Seite entgegengenommen (%d Bytes) - wartet auf den naechsten /sync", len(body))
 	noStore(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	fmt.Fprint(w, `{"ok":true}`)
@@ -357,6 +358,9 @@ func (b *bridge) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := b.takeResult()
+	if len(res) > 0 {
+		log.Printf("Ergebnis an Lightroom uebergeben (%d Bytes)", len(res))
+	}
 
 	b.mu.Lock()
 	rev := b.rev
@@ -380,6 +384,61 @@ func (b *bridge) handleHealth(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Protokollierung
+//
+// Ohne das stand im Protokoll nur die Startzeile, und ein Fehlschlag war von
+// aussen nicht zu unterscheiden von "die Anfrage kam nie an". Genau daran hat
+// die Fehlersuche zweimal gehangen.
+// ---------------------------------------------------------------------------
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(p []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	n, err := s.ResponseWriter.Write(p)
+	s.bytes += n
+	return n, err
+}
+
+// Flush MUSS durchgereicht werden, sonst kommt beim Ereignisstrom nichts mehr
+// an: /events haengt daran, dass der ResponseWriter ein http.Flusher ist, und
+// eine Verpackung ohne diese Methode nimmt ihm das weg.
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func withLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+		if rec.status == 0 {
+			rec.status = http.StatusOK
+		}
+		// /sync kommt einmal pro Sekunde. Erfolgreiche, ereignislose Syncs
+		// bleiben stumm, sonst waere das Protokoll nach einer Stunde
+		// unbrauchbar. Alles andere wird protokolliert - insbesondere jeder
+		// Fehlercode und jedes POST auf /result.
+		if r.URL.Path == "/sync" && rec.status == http.StatusOK {
+			return
+		}
+		log.Printf("%s %s -> %d (%d Bytes)", r.Method, r.URL.Path, rec.status, rec.bytes)
+	})
+}
 
 func main() {
 	token := flag.String("token", "", "Sitzungstoken; jede Anfrage muss es mitbringen")
@@ -460,7 +519,7 @@ func main() {
 	mux.HandleFunc("/health", b.handleHealth)
 
 	srv := &http.Server{
-		Handler: mux,
+		Handler: withLog(mux),
 		// Kein WriteTimeout: der Ereignisstrom bleibt absichtlich offen.
 		ReadHeaderTimeout: 10 * time.Second,
 	}

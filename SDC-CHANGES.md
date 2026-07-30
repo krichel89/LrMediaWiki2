@@ -1,5 +1,50 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.39 (July 2026)
+
+**The helper now logs what it is asked.** Until now the bridge log held only
+the startup line, which made "the request was rejected" indistinguishable from
+"the request never arrived". Two rounds of debugging hung on exactly that gap.
+
+Every request is logged with method, path, status and size, plus an explicit
+line when a result is accepted from the page and another when it is handed to
+Lightroom. Successful, uneventful `/sync` calls stay silent - they arrive once
+a second and would bury everything else within the hour. Every non-200 is
+logged, including the 403s from a missing token.
+
+The wrapper needed for this passes `Flush` through. Without that the
+Server-Sent-Events stream would have gone dead, because `/events` depends on
+the response writer being an `http.Flusher` and an ordinary wrapper hides that.
+The functional test counts stream events and would have caught it.
+
+No behaviour changed otherwise.
+
+## Version 2.0.38 (July 2026)
+
+**The bridge never started, and the bridge was innocent.** 2.0.37 always
+reported "the background app is running but does not answer on port N" and fell
+back to the file route. The helper was answering correctly the whole time; the
+Lightroom side misread the answer.
+
+`LrHttp.get` returns `(body, headers)`, not `(body, status)`. The probe named
+the second value `status` and compared it to 200 - a table against a number,
+which is never equal, so the check failed every single time. The POST helper
+twelve lines above got it right, and `MediaWikiApi.lua` has been doing it right
+for years: the status lives in `headers.status`.
+
+The same broken probe was also used to detect an already-running helper, so
+that path was dead too and a stale bridge would have been launched a second
+time.
+
+The probe now also writes to the trace log when it fails, with the status it
+actually saw and, if the status was fine, the body it did not recognise. The
+original failure gave no clue which of the two had gone wrong.
+
+**A lint rule so this class of bug cannot ship again.** `pruefe-alles.sh` grew
+a stage that rejects any `local x, status = LrHttp.` in the plug-in folder. It
+was verified in both directions: it passes on the fixed file and fails on the
+2.0.37 line.
+
 ## Version 2.0.37 (July 2026)
 
 **The background bridge.** The browser editor can now stay open and follow the

@@ -214,10 +214,25 @@ end
 
 -- Is a helper answering on this port? Uses /health, which needs no token.
 local function probe(port)
-	local body, status = LrHttp.get('http://127.0.0.1:' .. tostring(port) .. '/health')
-	if status ~= 200 then return false end
+	-- ACHTUNG, hier lag bis 2.0.37 ein Fehler: LrHttp.get gibt (body, headers)
+	-- zurueck, NICHT (body, status). Der zweite Rueckgabewert ist eine Tabelle,
+	-- ein Vergleich mit 200 ist deshalb IMMER wahr-ungleich und die Pruefung
+	-- schlug immer fehl, obwohl der Server sauber antwortete. Der Status steht
+	-- in headers.status - genau so macht es MediaWikiApi.lua seit Jahren.
+	local body, headers = LrHttp.get('http://127.0.0.1:' .. tostring(port) .. '/health')
+	local status = headers and headers.status or nil
+	if status ~= 200 then
+		MediaWikiUtils.trace('SDC bridge probe: port ' .. tostring(port)
+			.. ' -> status ' .. tostring(status))
+		return false
+	end
 	local data = decode(body)
-	return type(data) == 'table' and data.app == 'sdcbridge'
+	if not (type(data) == 'table' and data.app == 'sdcbridge') then
+		MediaWikiUtils.trace('SDC bridge probe: port ' .. tostring(port)
+			.. ' answered 200, but not with sdcbridge JSON: ' .. tostring(body))
+		return false
+	end
+	return true
 end
 
 --------------------------------------------------------------------------------
