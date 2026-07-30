@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LrMediaWiki – Strukturierte Daten</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Farben und Maße. Dunkel gehalten, weil dieser Editor aus Lightroom heraus
+   aufgerufen wird – der Sprung in ein weißes Fenster blendet mitten in einer
+   Durchsicht. QIDs, Sprachcodes und Wikitext laufen durchgehend in Monospace:
+   das sind Bezeichner, keine Prosa.
+--------------------------------------------------------------------------- */
+:root{
+  --bg:#191b1f; --panel:#22262b; --panel-2:#1e2126; --line:#33383f;
+  --ink:#e7eaee; --muted:#8f98a3; --accent:#5fb3c4; --accent-dim:#2f5f69;
+  --warn:#d4a24c; --danger:#c9705f;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --r:6px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink); font:15px/1.5 var(--ui);
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea{font:inherit;color:inherit}
+
+/* Kopfzeile ---------------------------------------------------------------- */
+header{
+  position:sticky; top:0; z-index:20;
+  display:flex; align-items:baseline; gap:1rem;
+  padding:.85rem 1.25rem; background:var(--panel-2);
+  border-bottom:1px solid var(--line);
+}
+header h1{margin:0; font-size:1rem; font-weight:600; letter-spacing:.01em}
+header .file{font:13px var(--mono); color:var(--muted); flex:1;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+header .count{font:13px var(--mono); color:var(--muted)}
+header select{background:var(--panel); color:var(--ink); border:1px solid var(--line);
+  border-radius:var(--r); padding:.25rem .4rem; font:13px var(--ui)}
+
+/* Layout ------------------------------------------------------------------- */
+main{
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,26rem);
+  gap:1.5rem; padding:1.5rem 1.25rem 6rem; max-width:76rem; margin:0 auto;
+}
+@media (max-width:60rem){ main{grid-template-columns:minmax(0,1fr)} }
+
+section{
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r); padding:1rem 1.1rem 1.15rem; margin-bottom:1.1rem;
+}
+section h2{
+  margin:0 0 .1rem; font-size:.85rem; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink);
+}
+section h2 .pid{font:12px var(--mono); color:var(--muted); margin-left:.5rem;
+  letter-spacing:0; text-transform:none}
+section .hint{margin:.15rem 0 .8rem; font-size:.82rem; color:var(--muted)}
+
+/* Eingaben ----------------------------------------------------------------- */
+input[type=text], textarea{
+  width:100%; background:var(--panel-2); border:1px solid var(--line);
+  border-radius:var(--r); padding:.5rem .6rem; outline:none;
+}
+input[type=text]:focus, textarea:focus{
+  border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-dim);
+}
+textarea{font:13.5px/1.6 var(--mono); resize:vertical; min-height:7rem}
+::placeholder{color:#6b737d}
+
+button{
+  background:var(--panel-2); border:1px solid var(--line);
+  border-radius:var(--r); padding:.45rem .8rem; cursor:pointer;
+}
+button:hover{border-color:var(--accent); color:#fff}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+button.primary{background:var(--accent); border-color:var(--accent); color:#10262b;
+  font-weight:600}
+button.primary:hover{filter:brightness(1.1); color:#10262b}
+.rowline{display:flex; gap:.5rem; align-items:center}
+.rowline > input{flex:1}
+
+/* Trefferliste ------------------------------------------------------------- */
+.results{margin-top:.5rem; border:1px solid var(--line); border-radius:var(--r);
+  overflow:hidden; display:none}
+.results.open{display:block}
+.results .hit{
+  display:flex; gap:.6rem; align-items:baseline; width:100%;
+  padding:.45rem .6rem; background:transparent; border:0; border-radius:0;
+  text-align:left; cursor:pointer; border-bottom:1px solid var(--line);
+}
+.results .hit:last-child{border-bottom:0}
+.results .hit:hover,.results .hit.sel{background:var(--accent-dim); color:#fff}
+.results .hit .qid{font:12.5px var(--mono); color:var(--accent); flex:none}
+.results .hit:hover .qid,.results .hit.sel .qid{color:#cfeff6}
+.results .hit .lab{font-weight:500}
+.results .hit .desc{color:var(--muted); font-size:.85em;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.results .hit:hover .desc,.results .hit.sel .desc{color:#d7e6ea}
+.results .state{padding:.45rem .6rem; color:var(--muted); font-size:.88rem}
+
+/* Chips: links der Bezeichner, rechts der Klartext – wie ein Inventaretikett */
+.chips{display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem}
+.chip{
+  display:inline-flex; align-items:stretch; border:1px solid var(--line);
+  border-radius:var(--r); background:var(--panel-2); overflow:hidden;
+}
+.chip .id{font:12.5px/1 var(--mono); color:var(--accent);
+  padding:.4rem .5rem; display:flex; align-items:center;
+  border-right:1px solid var(--line)}
+.chip .lab{padding:.35rem .5rem; font-size:.9rem; display:flex; align-items:center}
+.chip .lab.empty{color:var(--muted); font-style:italic}
+.chip .x{
+  border:0; background:transparent; border-left:1px solid var(--line);
+  color:var(--muted); padding:0 .55rem; cursor:pointer; border-radius:0;
+}
+.chip .x:hover{background:var(--danger); color:#fff; border-color:var(--danger)}
+.chips .none{color:var(--muted); font-size:.88rem; font-style:italic}
+
+/* Captions ----------------------------------------------------------------- */
+.cap{display:flex; gap:.5rem; margin-bottom:.45rem; align-items:center}
+.cap input.iso{width:5rem; font:13px var(--mono); text-align:center}
+.cap input.txt{flex:1}
+.cap .x{flex:none; padding:.45rem .6rem; color:var(--muted)}
+.cap .x:hover{border-color:var(--danger); color:var(--danger)}
+
+/* Vorschau ----------------------------------------------------------------- */
+.preview{position:sticky; top:4.2rem}
+.preview pre{
+  margin:0; padding:.85rem; background:var(--panel-2);
+  border:1px solid var(--line); border-radius:var(--r);
+  font:13px/1.65 var(--mono); white-space:pre-wrap; word-break:break-word;
+  max-height:60vh; overflow:auto;
+}
+.preview .k{color:var(--accent)}
+.preview .c{color:var(--muted)}
+
+/* Fußleiste ---------------------------------------------------------------- */
+footer{
+  position:fixed; left:0; right:0; bottom:0; z-index:20;
+  display:flex; align-items:center; gap:.75rem;
+  padding:.7rem 1.25rem; background:var(--panel-2);
+  border-top:1px solid var(--line);
+}
+footer .status{flex:1; font-size:.88rem; color:var(--muted)}
+footer .status.dirty{color:var(--warn)}
+footer .status.done{color:var(--accent)}
+
+.done-panel{display:none; padding:1rem 1.25rem; background:var(--panel);
+  border-top:1px solid var(--line)}
+.done-panel.open{display:block}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 data-i18n="appTitle">Strukturierte Daten</h1>
+  <span class="file" id="fileName">–</span>
+  <span class="count" id="photoCount"></span>
+  <select id="uiLang" aria-label="Sprache / Language"></select>
+</header>
+
+<main>
+  <div>
+    <!-- Depicts ------------------------------------------------------------ -->
+    <section>
+      <h2><span data-i18n="depictsTitle">Zeigt</span> <span class="pid">P180</span></h2>
+      <p class="hint" data-i18n="depictsHint"></p>
+      <div class="rowline">
+        <input type="text" id="depSearch" data-i18n-ph="depictsSearchPh"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="results" id="depResults"></div>
+      <div class="chips" id="depChips"></div>
+    </section>
+
+    <!-- Kategorien --------------------------------------------------------- -->
+    <section>
+      <h2 data-i18n="catTitle">Kategorien</h2>
+      <p class="hint" data-i18n="catHint"></p>
+      <div class="rowline">
+        <input type="text" id="catInput" data-i18n-ph="catPh"
+               autocomplete="off">
+        <button id="catSuggest" data-i18n="catSuggest">Aus Nummern vorschlagen</button>
+      </div>
+      <div class="chips" id="catChips"></div>
+    </section>
+
+    <!-- Created during ----------------------------------------------------- -->
+    <section>
+      <h2><span data-i18n="cdTitle">Entstanden bei</span> <span class="pid">P10408</span></h2>
+      <p class="hint" data-i18n="cdHint"></p>
+      <div class="rowline">
+        <input type="text" id="cdSearch" data-i18n-ph="cdSearchPh"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="results" id="cdResults"></div>
+      <div class="chips" id="cdChips"></div>
+    </section>
+
+    <!-- Bildunterschriften ------------------------------------------------- -->
+    <section>
+      <h2 data-i18n="capTitle">Bildunterschriften</h2>
+      <p class="hint" data-i18n="capHint"></p>
+      <div id="caps"></div>
+      <div class="rowline" style="margin-top:.6rem">
+        <button id="capAdd" data-i18n="capAdd">Sprache hinzufügen</button>
+      </div>
+    </section>
+
+    <!-- Wikitext ----------------------------------------------------------- -->
+    <section>
+      <h2 data-i18n="freeTitle">Weiterer Wikitext</h2>
+      <p class="hint" data-i18n="freeHint"></p>
+      <textarea id="freetext" spellcheck="false"></textarea>
+      <div class="rowline" style="margin-top:.6rem">
+        <button id="sdcToWikitext" data-i18n="sdcToWikitext">SDC zu Wikitext</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Vorschau ------------------------------------------------------------- -->
+  <div>
+    <div class="preview">
+      <section style="margin-bottom:0">
+        <h2 data-i18n="previewTitle">Das wird gespeichert</h2>
+        <p class="hint" data-i18n="previewHint"></p>
+        <pre id="preview"></pre>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="done-panel" id="donePanel">
+  <p id="doneText"></p>
+  <textarea id="doneData" readonly style="min-height:5rem"></textarea>
+  <div class="rowline" style="margin-top:.6rem">
+    <button id="copyBtn" data-i18n="copy">In die Zwischenablage</button>
+  </div>
+</div>
+
+<footer>
+  <span class="status" id="status" data-i18n="ready">Bereit.</span>
+  <button id="revertBtn" data-i18n="revert">Änderungen verwerfen</button>
+  <button class="primary" id="saveBtn" data-i18n="save">Speichern und zu Lightroom</button>
+</footer>
+
+<script>
+"use strict";
+
+/* ===========================================================================
+   Daten. Das Zusatzmodul ersetzt den Block zwischen den Markierungen durch
+   die Werte des aktuellen Fotos; ohne Ersetzung stehen hier Beispieldaten,
+   damit sich die Datei auch allein öffnen und prüfen lässt.
+   =========================================================================== */
+/*__PAYLOAD_START__*/
+var PAYLOAD = {
+  fileName: "KRI_2026_1834.dng",
+  photoCount: 1,
+  returnPort: 0,            /* 0 = kein Rückweg, nur Anzeigen und Kopieren */
+  token: "",
+  photoKey: "",          /* Kennung des Fotos; geht mit dem Ergebnis zurück */
+  uiLang: "",            /* leer = Sprache des Browsers */
+  depicts: "Q640 # Harald Krichel; Q42 # Douglas Adams",
+  createdDuring: "Q124692383 # Berlinale 2026",
+  categories: "Berlinale 2026; Harald Krichel",
+  captions: { de: "Harald Krichel bei der Berlinale 2026", en: "" },
+  freetext: "{{Information}}\n[[Category:Photographs by Harald Krichel]]"
+};
+/*__PAYLOAD_END__*/
+
+
+/* ===========================================================================
+   Sprachen. STRINGS ist die einzige Stelle, an der Oberflächentexte stehen –
+   eine weitere Sprache ist eine weitere Tabelle, sonst nichts. Fehlt ein
+   Schlüssel in einer Sprache, greift Englisch, dann der Schlüsselname selbst;
+   eine unvollständige Übersetzung bricht also nichts.
+   Platzhalter im Text: {0}, {1} …
+   =========================================================================== */
+var STRINGS = {
+  de: {
+    langName: "Deutsch",
+    appTitle: "Strukturierte Daten",
+    depictsTitle: "Zeigt",
+    depictsHint: "Was auf dem Bild zu sehen ist. Ab drei Buchstaben wird gesucht; Treffer mit Klick oder Eingabetaste übernehmen. Eine bekannte Nummer kann direkt eingetippt werden.",
+    depictsSearchPh: "Namen suchen oder Q1234567",
+    depictsEmpty: "Noch nichts zugeordnet.",
+    catTitle: "Kategorien",
+    catHint: "Ohne das Präfix „Category:“. Eingabetaste fügt hinzu.",
+    catPh: "Berlinale 2026",
+    catSuggest: "Aus Nummern vorschlagen",
+    catEmpty: "Keine Kategorien.",
+    cdTitle: "Entstanden bei",
+    cdHint: "Die Veranstaltung, etwa ein Filmfestival. Nur ein Eintrag.",
+    cdSearchPh: "Veranstaltung suchen oder Q1234567",
+    cdEmpty: "Keine Veranstaltung.",
+    capTitle: "Bildunterschriften",
+    capHint: "Je Sprache eine Zeile. Sprachcode links ist frei überschreibbar.",
+    capAdd: "Sprache hinzufügen",
+    capLangLabel: "Sprachcode",
+    capTextPh: "Bildunterschrift auf {0}",
+    capRemove: "Zeile entfernen",
+    freeTitle: "Weiterer Wikitext",
+    freeHint: "Alles, was nicht als strukturierte Daten abgelegt wird – Vorlagen, Kommentare, Beschreibungsblöcke.",
+    sdcToWikitext: "SDC zu Wikitext",
+    previewTitle: "Das wird gespeichert",
+    previewHint: "Der Inhalt des Felds „Wikitext“, genau so, wie das Zusatzmodul ihn ablegt.",
+    previewEmpty: "(leer)",
+    save: "Speichern und zu Lightroom",
+    revert: "Änderungen verwerfen",
+    copy: "In die Zwischenablage",
+    remove: "Entfernen",
+    noLabel: "ohne Bezeichnung",
+    ready: "Bereit.",
+    unsaved: "Nicht gespeichert.",
+    searching: "Suche …",
+    noHits: "Nichts gefunden.",
+    offline: "Wikidata ist gerade nicht erreichbar.",
+    enterApplies: "Eingabetaste übernimmt {0}",
+    noQids: "Keine Nummern eingetragen, aus denen sich Kategorien ableiten ließen.",
+    catsAdded: "{0} Kategorie(n) ergänzt – bitte prüfen.",
+    nothingNew: "Nichts Neues gefunden.",
+    allInWikitext: "Es steht schon alles im Wikitext.",
+    linesAppended: "{0} Zeile(n) an den Wikitext angehängt.",
+    reverted: "Auf den Stand aus Lightroom zurückgesetzt.",
+    copied: "Kopiert.",
+    copyFailed: "Kopieren hat nicht geklappt – bitte von Hand.",
+    downloaded: "Datei heruntergeladen – Lightroom übernimmt sie automatisch.",
+    downloadedLong: "Die Datei wurde heruntergeladen. Lightroom holt sie sich automatisch aus dem Downloads-Ordner – das dauert höchstens ein paar Sekunden.\n\nFalls der Browser nach dem Speicherort gefragt hat: bitte den Downloads-Ordner verwenden, damit Lightroom die Datei findet.",
+    liveOn: "Mit Lightroom verbunden.",
+    liveOff: "Verbindung zu Lightroom verloren.",
+    liveRetry: "Verbindung unterbrochen – versuche erneut …",
+    savedLive: "Gespeichert – Lightroom hat es übernommen.",
+    savedLiveLong: "Die Daten sind an Lightroom übergeben worden. Du kannst einfach weiterarbeiten; beim nächsten Foto wechselt diese Seite von selbst mit.",
+    switchedTo: "Lightroom ist auf {0} gewechselt.",
+    switchPending: "Lightroom ist auf {0} gewechselt – hier stehen noch ungespeicherte Änderungen.",
+    adoptSwitch: "Wechseln, Änderungen verwerfen",
+    staySwitch: "Hierbleiben",
+    photosSelected: "{0} Fotos ausgewählt"
+  },
+  en: {
+    langName: "English",
+    appTitle: "Structured data",
+    depictsTitle: "Depicts",
+    depictsHint: "What can be seen in the picture. Searching starts at three characters; apply a hit by clicking it or pressing Enter. A known item number can be typed in directly.",
+    depictsSearchPh: "Search a name or Q1234567",
+    depictsEmpty: "Nothing assigned yet.",
+    catTitle: "Categories",
+    catHint: "Without the “Category:” prefix. Enter adds one.",
+    catPh: "Berlinale 2026",
+    catSuggest: "Suggest from item numbers",
+    catEmpty: "No categories.",
+    cdTitle: "Created during",
+    cdHint: "The event, a film festival for instance. One entry only.",
+    cdSearchPh: "Search an event or Q1234567",
+    cdEmpty: "No event.",
+    capTitle: "Captions",
+    capHint: "One line per language. The language code on the left can be overwritten freely.",
+    capAdd: "Add a language",
+    capLangLabel: "Language code",
+    capTextPh: "Caption in {0}",
+    capRemove: "Remove this line",
+    freeTitle: "Further wikitext",
+    freeHint: "Everything that is not stored as structured data – templates, comments, description blocks.",
+    sdcToWikitext: "SDC to wikitext",
+    previewTitle: "What will be saved",
+    previewHint: "The contents of the “Wikitext” field, exactly as the plug-in stores them.",
+    previewEmpty: "(empty)",
+    save: "Save and back to Lightroom",
+    revert: "Discard changes",
+    copy: "Copy to clipboard",
+    remove: "Remove",
+    noLabel: "no label",
+    ready: "Ready.",
+    unsaved: "Not saved.",
+    searching: "Searching …",
+    noHits: "Nothing found.",
+    offline: "Wikidata cannot be reached right now.",
+    enterApplies: "Enter applies {0}",
+    noQids: "No item numbers entered that categories could be derived from.",
+    catsAdded: "{0} category/categories added – please check.",
+    nothingNew: "Nothing new found.",
+    allInWikitext: "Everything is in the wikitext already.",
+    linesAppended: "{0} line(s) appended to the wikitext.",
+    reverted: "Reset to the state from Lightroom.",
+    copied: "Copied.",
+    copyFailed: "Copying did not work – please do it by hand.",
+    downloaded: "File downloaded – Lightroom picks it up automatically.",
+    downloadedLong: "The file has been downloaded. Lightroom fetches it from the Downloads folder automatically – this takes a few seconds at most.\n\nIf the browser asked where to save it: please use the Downloads folder so that Lightroom finds it.",
+    liveOn: "Connected to Lightroom.",
+    liveOff: "Connection to Lightroom lost.",
+    liveRetry: "Connection interrupted – retrying …",
+    savedLive: "Saved – Lightroom has taken it over.",
+    savedLiveLong: "The data has been handed to Lightroom. Just carry on; this page follows along when you move to the next photo.",
+    switchedTo: "Lightroom moved to {0}.",
+    switchPending: "Lightroom moved to {0} – there are unsaved changes here.",
+    adoptSwitch: "Switch, discard changes",
+    staySwitch: "Stay here",
+    photosSelected: "{0} photos selected"
+  }
+};
+
+var UI = "en";
+
+function t(key) {
+  var table = STRINGS[UI] || {};
+  var s = table[key];
+  if (s === undefined) s = (STRINGS.en || {})[key];
+  if (s === undefined) return key;
+  for (var i = 1; i < arguments.length; i++) {
+    s = s.split("{" + (i - 1) + "}").join(String(arguments[i]));
+  }
+  return s;
+}
+
+/* Setzt alle mit data-i18n bzw. data-i18n-ph markierten Texte neu. */
+function applyStrings() {
+  var nodes = document.querySelectorAll("[data-i18n]");
+  for (var i = 0; i < nodes.length; i++) {
+    nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+  }
+  nodes = document.querySelectorAll("[data-i18n-ph]");
+  for (var j = 0; j < nodes.length; j++) {
+    nodes[j].placeholder = t(nodes[j].getAttribute("data-i18n-ph"));
+  }
+  document.documentElement.lang = UI;
+}
+
+function pickUiLang() {
+  var wanted = PAYLOAD.uiLang || (navigator.language || "en").slice(0, 2);
+  return STRINGS[wanted] ? wanted : "en";
+}
+
+var API = "https://www.wikidata.org/w/api.php";
+var MIN_CHARS = 3, DEBOUNCE = 250, MAX_HITS = 8;
+
+/* ---------------------------------------------------------------------------
+   Zustand. depicts und createdDuring sind Listen aus {id, label}; die
+   Zeichenketten des Zusatzmoduls werden beim Laden zerlegt und beim Speichern
+   wieder zusammengesetzt.
+--------------------------------------------------------------------------- */
+var state = { depicts: [], createdDuring: null, categories: [], captions: [],
+              freetext: "" };
+var dirty = false;
+
+function splitTokens(s){
+  return String(s || "").split(/[;,]/).map(function(t){ return t.trim(); })
+         .filter(function(t){ return t !== ""; });
+}
+function parseToken(tok){
+  var hash = tok.indexOf("#");
+  var id = (hash < 0 ? tok : tok.slice(0, hash)).trim();
+  var label = hash < 0 ? "" : tok.slice(hash + 1).trim();
+  var m = id.match(/^[Qq](\d+)$/);
+  return m ? { id: "Q" + m[1], label: label } : null;
+}
+function tokenText(e){ return e.label ? e.id + " # " + e.label : e.id; }
+
+function load(){
+  state.depicts = splitTokens(PAYLOAD.depicts).map(parseToken)
+                  .filter(Boolean);
+  var cd = splitTokens(PAYLOAD.createdDuring).map(parseToken).filter(Boolean);
+  state.createdDuring = cd.length ? cd[0] : null;
+  state.categories = splitTokens(PAYLOAD.categories);
+  state.captions = [];
+  var caps = PAYLOAD.captions || {};
+  ["de","en","fr","it"].forEach(function(l){
+    state.captions.push({ lang: l, text: caps[l] || "" });
+  });
+  Object.keys(caps).forEach(function(l){
+    if (["de","en","fr","it"].indexOf(l) < 0) {
+      state.captions.push({ lang: l, text: caps[l] });
+    }
+  });
+  state.freetext = PAYLOAD.freetext || "";
+}
+
+/* ---------------------------------------------------------------------------
+   Wikidata. Erst die Präfixsuche, und wenn die zu wenig hergibt, zusätzlich
+   die Volltextsuche – dieselbe Staffelung wie im Zusatzmodul, damit
+   umgestellte Wortfolgen und Ordnungszahlen gefunden werden.
+--------------------------------------------------------------------------- */
+function api(params){
+  params.format = "json";
+  params.origin = "*";
+  var q = Object.keys(params).map(function(k){
+    return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+  }).join("&");
+  return fetch(API + "?" + q).then(function(r){ return r.json(); });
+}
+
+/* Sprachen, in denen gesucht wird. Für Personen ist das meist gleichgültig –
+   ein Name lautet überall gleich. Für Sachen nicht: „Kamera“, „camera“ und
+   „appareil photo“ sind drei verschiedene Zeichenketten, und die Präfixsuche
+   von Wikidata findet nur, was in der abgefragten Sprache steht. Deshalb wird
+   in mehreren Sprachen zugleich gesucht: in der Oberflächensprache, auf
+   Englisch als der am besten gepflegten Sprache, und in allen Sprachen, für
+   die dieses Foto bereits eine Bildunterschrift hat – wer italienische
+   Captions schreibt, sucht vermutlich auch mit italienischen Begriffen. */
+function searchLanguages() {
+  var out = [], seen = {};
+  function add(l) {
+    l = (l || "").trim().toLowerCase();
+    if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && !seen[l] && out.length < 4) {
+      seen[l] = true; out.push(l);
+    }
+  }
+  add(UI);
+  add("en");
+  state.captions.forEach(function(c){ add(c.lang); });
+  return out;
+}
+
+function searchPrefix(term, lang){
+  return api({ action:"wbsearchentities", search:term, language:lang,
+               uselang:UI, type:"item", limit:5 })
+    .then(function(d){
+      return (d.search || []).map(function(e){
+        return { id:e.id, label:e.label || "", description:e.description || "" };
+      });
+    })
+    .catch(function(){ return []; });
+}
+
+/* Volltextsuche. Sie durchsucht Wikidata sprachübergreifend und ist damit die
+   breiteste Stufe – auch für Sprachen, die oben nicht abgefragt werden. */
+function searchFulltext(term){
+  return api({ action:"query", list:"search", srsearch:term,
+               srnamespace:0, srlimit:MAX_HITS })
+    .then(function(d){
+      var ids = ((d.query && d.query.search) || [])
+        .map(function(e){ return e.title; })
+        .filter(function(t){ return /^Q\d+$/.test(t); });
+      if (!ids.length) return [];
+      return fetchLabels(ids);
+    })
+    .catch(function(){ return []; });
+}
+
+/* Bezeichnungen und Beschreibungen zu einer QID-Liste, in der Reihenfolge der
+   Liste. Bevorzugt die Oberflächensprache, dann Englisch, dann irgendeine
+   vorhandene – so bleibt eine Zeile auch dann lesbar, wenn es die Bezeichnung
+   in den ersten beiden Sprachen nicht gibt. */
+function fetchLabels(ids){
+  return api({ action:"wbgetentities", ids:ids.join("|"),
+               props:"labels|descriptions" })
+    .then(function(d2){
+      var ents = d2.entities || {};
+      return ids.map(function(id){
+        var e = ents[id];
+        if (!e || e.missing !== undefined) return null;
+        function pick(tbl){
+          if (!tbl) return "";
+          var v = tbl[UI] || tbl.en;
+          if (!v) {
+            for (var k in tbl) { if (tbl[k] && tbl[k].value) { v = tbl[k]; break; } }
+          }
+          return v ? v.value : "";
+        }
+        return { id:id, label:pick(e.labels), description:pick(e.descriptions) };
+      }).filter(Boolean);
+    })
+    .catch(function(){ return []; });
+}
+
+/* Alle Stufen PARALLEL: die Präfixsuchen je Sprache und die Volltextsuche
+   laufen gleichzeitig, nicht nacheinander – dadurch kostet die breitere Suche
+   kaum mehr Zeit als die alte einsprachige. Zusammengeführt wird in der
+   Reihenfolge der Sprachen (Oberflächensprache zuerst), die Volltexttreffer
+   hängen hinten an. */
+function search(term){
+  var langs = searchLanguages();
+  var jobs = langs.map(function(l){ return searchPrefix(term, l); });
+  jobs.push(searchFulltext(term));
+  return Promise.all(jobs).then(function(lists){
+    var seen = {}, out = [];
+    lists.forEach(function(list){
+      list.forEach(function(r){
+        if (r.id && !seen[r.id] && out.length < MAX_HITS) {
+          seen[r.id] = true; out.push(r);
+        }
+      });
+    });
+    return out;
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   Suchfeld mit Trefferliste. Pfeiltasten wählen, Eingabetaste übernimmt,
+   Escape schließt – das ist der Teil, den ein Lightroom-Dialog nicht kann.
+--------------------------------------------------------------------------- */
+function wireSearch(inputId, listId, onPick){
+  var input = document.getElementById(inputId);
+  var list = document.getElementById(listId);
+  var timer = null, generation = 0, hits = [], sel = -1;
+
+  function close(){ list.classList.remove("open"); list.innerHTML = "";
+                    hits = []; sel = -1; }
+  function render(){
+    list.innerHTML = "";
+    hits.forEach(function(h, i){
+      var b = document.createElement("button");
+      b.className = "hit" + (i === sel ? " sel" : "");
+      b.type = "button";
+      b.innerHTML = '<span class="qid"></span><span class="lab"></span>' +
+                    '<span class="desc"></span>';
+      b.querySelector(".qid").textContent = h.id;
+      b.querySelector(".lab").textContent = h.label || h.id;
+      b.querySelector(".desc").textContent = h.description || "";
+      b.addEventListener("click", function(){ take(h); });
+      list.appendChild(b);
+    });
+    list.classList.add("open");
+  }
+  function state_(text){
+    list.innerHTML = '<div class="state"></div>';
+    list.firstChild.textContent = text;
+    list.classList.add("open");
+  }
+  function take(hit){
+    onPick({ id: hit.id, label: hit.label || "" });
+    input.value = ""; close(); input.focus();
+  }
+
+  input.addEventListener("input", function(){
+    var term = input.value.trim();
+    generation++;
+    var mine = generation;
+    if (timer) clearTimeout(timer);
+    var direct = parseToken(term);
+    if (direct && /^[Qq]\d+$/.test(term.replace(/#.*$/, "").trim())) {
+      state_(t("enterApplies", direct.id));
+      hits = [{ id: direct.id, label: direct.label, description: "" }];
+      sel = 0;
+      return;
+    }
+    if (term.length < MIN_CHARS) { close(); return; }
+    state_(t("searching"));
+    timer = setTimeout(function(){
+      search(term).then(function(res){
+        if (mine !== generation) return;
+        hits = res; sel = res.length ? 0 : -1;
+        if (!res.length) { state_(t("noHits")); return; }
+        render();
+      }).catch(function(){
+        if (mine !== generation) return;
+        state_(t("offline"));
+      });
+    }, DEBOUNCE);
+  });
+
+  input.addEventListener("keydown", function(ev){
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      if (!hits.length) return;
+      ev.preventDefault();
+      sel += (ev.key === "ArrowDown" ? 1 : -1);
+      if (sel < 0) sel = hits.length - 1;
+      if (sel >= hits.length) sel = 0;
+      render();
+    } else if (ev.key === "Enter") {
+      if (sel >= 0 && hits[sel]) { ev.preventDefault(); take(hits[sel]); }
+    } else if (ev.key === "Escape") {
+      close();
+    }
+  });
+  input.addEventListener("blur", function(){ setTimeout(close, 180); });
+}
+
+/* ---------------------------------------------------------------------------
+   Darstellung
+--------------------------------------------------------------------------- */
+function chip(id, label, onRemove){
+  var el = document.createElement("span");
+  el.className = "chip";
+  var i = document.createElement("span"); i.className = "id"; i.textContent = id;
+  var l = document.createElement("span");
+  l.className = "lab" + (label ? "" : " empty");
+  l.textContent = label || t("noLabel");
+  var x = document.createElement("button");
+  x.className = "x"; x.type = "button"; x.title = t("remove");
+  x.textContent = "✕";
+  x.addEventListener("click", onRemove);
+  el.appendChild(i); el.appendChild(l); el.appendChild(x);
+  return el;
+}
+function plainChip(text, onRemove){
+  var el = document.createElement("span");
+  el.className = "chip";
+  var l = document.createElement("span"); l.className = "lab"; l.textContent = text;
+  var x = document.createElement("button");
+  x.className = "x"; x.type = "button"; x.title = t("remove");
+  x.textContent = "✕";
+  x.addEventListener("click", onRemove);
+  el.appendChild(l); el.appendChild(x);
+  return el;
+}
+function emptyNote(box, text){
+  var n = document.createElement("span");
+  n.className = "none"; n.textContent = text;
+  box.appendChild(n);
+}
+
+function renderDepicts(){
+  var box = document.getElementById("depChips");
+  box.innerHTML = "";
+  if (!state.depicts.length) { emptyNote(box, t("depictsEmpty")); return; }
+  state.depicts.forEach(function(e, i){
+    box.appendChild(chip(e.id, e.label, function(){
+      state.depicts.splice(i, 1); touch(); renderDepicts();
+    }));
+  });
+}
+function renderCreatedDuring(){
+  var box = document.getElementById("cdChips");
+  box.innerHTML = "";
+  if (!state.createdDuring) { emptyNote(box, t("cdEmpty")); return; }
+  var e = state.createdDuring;
+  box.appendChild(chip(e.id, e.label, function(){
+    state.createdDuring = null; touch(); renderCreatedDuring();
+  }));
+}
+function renderCategories(){
+  var box = document.getElementById("catChips");
+  box.innerHTML = "";
+  if (!state.categories.length) { emptyNote(box, t("catEmpty")); return; }
+  state.categories.forEach(function(c, i){
+    box.appendChild(plainChip(c, function(){
+      state.categories.splice(i, 1); touch(); renderCategories();
+    }));
+  });
+}
+function renderCaptions(){
+  var box = document.getElementById("caps");
+  box.innerHTML = "";
+  state.captions.forEach(function(c, i){
+    var row = document.createElement("div"); row.className = "cap";
+    var iso = document.createElement("input");
+    iso.type = "text"; iso.className = "iso"; iso.value = c.lang;
+    iso.setAttribute("aria-label", t("capLangLabel"));
+    iso.addEventListener("input", function(){
+      c.lang = iso.value.trim().toLowerCase(); touch();
+    });
+    var txt = document.createElement("input");
+    txt.type = "text"; txt.className = "txt"; txt.value = c.text;
+    txt.placeholder = t("capTextPh", c.lang || "…");
+    txt.addEventListener("input", function(){ c.text = txt.value; touch(); });
+    var x = document.createElement("button");
+    x.className = "x"; x.type = "button"; x.textContent = "✕";
+    x.title = t("capRemove");
+    x.addEventListener("click", function(){
+      state.captions.splice(i, 1); touch(); renderCaptions();
+    });
+    row.appendChild(iso); row.appendChild(txt); row.appendChild(x);
+    box.appendChild(row);
+  });
+}
+
+/* Der Wikitext, genau im Format des Zusatzmoduls: je Nummer eine eigene
+   depicts-Zeile, danach created_during, dann der freie Text. */
+function buildWikitext(){
+  var parts = [], seen = {};
+  state.captions.forEach(function(c){
+    var l = (c.lang || "").trim().toLowerCase();
+    var t = (c.text || "").trim();
+    if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && t && !seen[l]) {
+      seen[l] = true;
+      parts.push("caption_" + l + "=" + t);
+    }
+  });
+  state.depicts.forEach(function(e){ parts.push("depicts=" + tokenText(e)); });
+  if (state.createdDuring) {
+    parts.push("created_during=" + tokenText(state.createdDuring));
+  }
+  var ft = (state.freetext || "").trim();
+  if (ft) parts.push(ft);
+  return parts.join("\n");
+}
+
+function renderPreview(){
+  var pre = document.getElementById("preview");
+  var text = buildWikitext();
+  pre.innerHTML = "";
+  if (!text) { pre.textContent = t("previewEmpty"); return; }
+  text.split("\n").forEach(function(line){
+    var m = line.match(/^([a-z_0-9]+)=(.*)$/);
+    if (m) {
+      var k = document.createElement("span");
+      k.className = "k"; k.textContent = m[1] + "=";
+      pre.appendChild(k);
+      var rest = m[2], h = rest.indexOf("#");
+      if (h >= 0) {
+        pre.appendChild(document.createTextNode(rest.slice(0, h)));
+        var c = document.createElement("span");
+        c.className = "c"; c.textContent = rest.slice(h);
+        pre.appendChild(c);
+      } else {
+        pre.appendChild(document.createTextNode(rest));
+      }
+    } else {
+      pre.appendChild(document.createTextNode(line));
+    }
+    pre.appendChild(document.createTextNode("\n"));
+  });
+}
+
+function renderAll(){
+  renderDepicts(); renderCreatedDuring(); renderCategories();
+  renderCaptions(); renderPreview();
+  document.getElementById("freetext").value = state.freetext;
+}
+function touch(){
+  dirty = true;
+  var s = document.getElementById("status");
+  s.className = "status dirty";
+  s.textContent = t("unsaved");
+  renderPreview();
+}
+
+/* ---------------------------------------------------------------------------
+   Kategorievorschläge: zu jeder eingetragenen Nummer die Commons-Kategorie
+   (P373) holen, ersatzweise die englische Bezeichnung.
+--------------------------------------------------------------------------- */
+function suggestCategories(){
+  var ids = state.depicts.map(function(e){ return e.id; });
+  if (state.createdDuring) ids.push(state.createdDuring.id);
+  var btn = document.getElementById("catSuggest");
+  if (!ids.length) { setStatus(t("noQids")); return; }
+  btn.disabled = true;
+  var old = btn.textContent;
+  btn.textContent = t("searching");
+  api({ action:"wbgetentities", ids:ids.slice(0,50).join("|"),
+        props:"claims|labels", languages:"en" })  /* Kategorienamen sind englisch */
+  .then(function(d){
+    var ents = d.entities || {}, added = 0;
+    var have = {};
+    state.categories.forEach(function(c){ have[c.toLowerCase()] = true; });
+    ids.forEach(function(id){
+      var e = ents[id];
+      if (!e || e.missing !== undefined) return;
+      var name = "";
+      var claims = (e.claims || {}).P373 || [];
+      for (var i = 0; i < claims.length; i++) {
+        var c = claims[i];
+        if (c.rank !== "deprecated" && c.mainsnak &&
+            c.mainsnak.snaktype === "value" &&
+            typeof c.mainsnak.datavalue.value === "string") {
+          name = c.mainsnak.datavalue.value.trim(); break;
+        }
+      }
+      if (!name && e.labels && e.labels.en) name = e.labels.en.value.trim();
+      if (name && !have[name.toLowerCase()]) {
+        have[name.toLowerCase()] = true;
+        state.categories.push(name);
+        added++;
+      }
+    });
+    renderCategories();
+    if (added) { touch(); setStatus(t("catsAdded", added)); }
+    else setStatus(t("nothingNew"));
+  })
+  .catch(function(){ setStatus(t("offline")); })
+  .then(function(){ btn.disabled = false; btn.textContent = old; });
+}
+
+function setStatus(text, kind){
+  var s = document.getElementById("status");
+  s.className = "status" + (kind ? " " + kind : (dirty ? " dirty" : ""));
+  s.textContent = text;
+}
+
+/* ---------------------------------------------------------------------------
+   Speichern. Der Rückweg zu Lightroom läuft über den Loopback-Port: die Daten
+   werden in Stücke zerlegt, damit sie sicher in eine Adresszeile passen, und
+   der Reihe nach abgeschickt. Ohne Port (Datei allein geöffnet) wird das
+   Ergebnis nur angezeigt.
+--------------------------------------------------------------------------- */
+function payloadOut(){
+  var caps = {};
+  state.captions.forEach(function(c){
+    var l = (c.lang || "").trim().toLowerCase();
+    var t = (c.text || "").trim();
+    if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && t) caps[l] = t;
+  });
+  return {
+    token: PAYLOAD.token || "",
+    photoKey: PAYLOAD.photoKey || "",
+    uiLang: UI,
+    depicts: state.depicts.map(tokenText).join("; "),
+    createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
+    categories: state.categories.join("; "),
+    captions: caps,
+    freetext: state.freetext || "",
+    wikitext: buildWikitext()
+  };
+}
+
+/* -----------------------------------------------------------------------
+   Rückweg: kein Netzwerk, keine Ports, kein Warten. Die Seite löst einen
+   DATEIDOWNLOAD aus – eine JSON-Datei mit festem Namen, die im Downloads-
+   Ordner landet. In Lightroom läuft ein stiller Beobachter, der alle zwei
+   Sekunden nachsieht, ob die Datei aufgetaucht ist. Kein LrSocket, kein
+   fetch, keine Portbelegung, keine Schutzsoftware im Weg.
+
+   Voraussetzung: der Browser ist so eingestellt, dass Downloads ohne
+   Rückfrage im Standardordner landen. Falls nicht, kommt ein Dateidialog
+   dazwischen – funktioniert trotzdem, nur ein Klick mehr.
+   ----------------------------------------------------------------------- */
+
+var RESULT_FILENAME = "lrmediawiki-sdc-result.json";
+
+function triggerDownload(text, filename) {
+  var blob = new Blob([text], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 200);
+}
+
+function save(){
+  if (BRIDGE) { saveViaBridge(); return; }
+  var out = JSON.stringify(payloadOut(), null, 2);
+  triggerDownload(out, RESULT_FILENAME);
+  dirty = false;
+  setStatus(t("downloaded"), "done");
+  showDone(t("downloadedLong"), buildWikitext());
+}
+
+function showDone(text, data){
+  document.getElementById("doneText").textContent = text;
+  document.getElementById("doneData").value = data;
+  document.getElementById("donePanel").classList.add("open");
+  document.getElementById("doneData").scrollIntoView({ behavior:"smooth",
+                                                       block:"center" });
+}
+
+/* ---------------------------------------------------------------------------
+   Brueckenbetrieb.
+
+   Wird diese Seite von der Hintergrund-App ausgeliefert (http://127.0.0.1:PORT
+   mit Sitzungstoken in der Adresse), dann holt sie ihre Daten von dort, haengt
+   an einem Ereignisstrom und meldet das Ergebnis per POST zurueck. Lightroom
+   ist dabei nur Gegenstelle und lauscht selbst nirgends.
+
+   Ohne diese Voraussetzungen – also als Datei geoeffnet – aendert sich nichts:
+   BRIDGE bleibt leer, und die Seite verhaelt sich wie bisher (Dateidownload).
+   Deshalb ist unten jeder Zweig doppelt vorhanden.
+--------------------------------------------------------------------------- */
+var BRIDGE = (function(){
+  try {
+    if (location.protocol !== "http:" && location.protocol !== "https:") return null;
+    var m = location.search.match(/[?&]t=([^&]+)/);
+    if (!m) return null;
+    return { token: decodeURIComponent(m[1]), rev: -1, es: null };
+  } catch (e) { return null; }
+})();
+
+function bridgeUrl(path){
+  return path + "?t=" + encodeURIComponent(BRIDGE.token);
+}
+
+/* Uebernimmt einen von Lightroom geschickten Zustand. */
+function adoptState(p){
+  PAYLOAD = p;
+  load();
+  dirty = false;
+  renderAll();
+  document.getElementById("donePanel").classList.remove("open");
+  document.getElementById("fileName").textContent = PAYLOAD.fileName || "";
+  var n = Number(PAYLOAD.photoCount || 1);
+  document.getElementById("photoCount").textContent =
+    n > 1 ? t("photosSelected", n) : "";
+  hideSwitchBar();
+}
+
+/* Leiste fuer den Fall, dass Lightroom das Foto wechselt, waehrend hier noch
+   ungespeicherte Aenderungen stehen. Nichts wird ueberschrieben, ohne dass der
+   Mensch entschieden hat. */
+var pendingState = null;
+
+function switchBar(){
+  var bar = document.getElementById("switchBar");
+  if (bar) return bar;
+  bar = document.createElement("div");
+  bar.id = "switchBar";
+  bar.style.cssText =
+    "position:fixed;left:0;right:0;bottom:0;z-index:50;display:none;" +
+    "gap:12px;align-items:center;justify-content:center;padding:10px 16px;" +
+    "background:var(--panel);border-top:1px solid var(--warn);" +
+    "color:var(--ink);font:14px var(--ui)";
+  var txt = document.createElement("span");
+  txt.id = "switchBarText";
+  var take = document.createElement("button");
+  take.id = "switchBarTake";
+  var stay = document.createElement("button");
+  stay.id = "switchBarStay";
+  [take, stay].forEach(function(b){
+    b.style.cssText =
+      "padding:6px 12px;border-radius:var(--r);border:1px solid var(--line);" +
+      "background:var(--panel-2);color:var(--ink);cursor:pointer;font:inherit";
+  });
+  take.addEventListener("click", function(){
+    if (pendingState) adoptState(pendingState);
+    pendingState = null;
+  });
+  stay.addEventListener("click", function(){
+    pendingState = null;
+    hideSwitchBar();
+  });
+  bar.appendChild(txt); bar.appendChild(take); bar.appendChild(stay);
+  document.body.appendChild(bar);
+  return bar;
+}
+
+function showSwitchBar(name){
+  var bar = switchBar();
+  document.getElementById("switchBarText").textContent = t("switchPending", name);
+  document.getElementById("switchBarTake").textContent = t("adoptSwitch");
+  document.getElementById("switchBarStay").textContent = t("staySwitch");
+  bar.style.display = "flex";
+}
+
+function hideSwitchBar(){
+  var bar = document.getElementById("switchBar");
+  if (bar) bar.style.display = "none";
+}
+
+/* Ein Zustand ist eingetroffen. Bei ungespeicherten Aenderungen wird gefragt,
+   sonst wird stillschweigend gewechselt. */
+function onBridgeState(env){
+  if (!env || typeof env.rev !== "number") return;
+  if (env.rev === BRIDGE.rev) return;
+  BRIDGE.rev = env.rev;
+  if (!env.state) return;
+
+  if (dirty) {
+    pendingState = env.state;
+    showSwitchBar(env.state.fileName || "?");
+    return;
+  }
+  adoptState(env.state);
+  setStatus(t("switchedTo", PAYLOAD.fileName || "?"));
+}
+
+function connectBridge(){
+  try {
+    if (BRIDGE.es) BRIDGE.es.close();
+    var es = new EventSource(bridgeUrl("/events"));
+    BRIDGE.es = es;
+    es.addEventListener("state", function(ev){
+      var env = null;
+      try { env = JSON.parse(ev.data); } catch (e) { return; }
+      onBridgeState(env);
+    });
+    es.addEventListener("open", function(){ setStatus(t("liveOn"), "done"); });
+    es.addEventListener("error", function(){
+      /* EventSource verbindet sich selbst neu; nur melden. */
+      setStatus(t("liveRetry"), "dirty");
+    });
+  } catch (e) {
+    setStatus(t("liveOff"), "dirty");
+  }
+}
+
+function saveViaBridge(){
+  var out = JSON.stringify(payloadOut());
+  return fetch(bridgeUrl("/result"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: out
+  }).then(function(r){
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    dirty = false;
+    setStatus(t("savedLive"), "done");
+    showDone(t("savedLiveLong"), buildWikitext());
+  }).catch(function(){
+    /* Rueckfall: wenn der POST nicht durchkommt, wenigstens die Datei. */
+    setStatus(t("liveOff"), "dirty");
+    triggerDownload(JSON.stringify(payloadOut(), null, 2), RESULT_FILENAME);
+    showDone(t("downloadedLong"), buildWikitext());
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   Verdrahtung
+--------------------------------------------------------------------------- */
+function setUiLang(lang){
+  UI = STRINGS[lang] ? lang : "en";
+  applyStrings();
+  renderAll();
+  setStatus(t("ready"));
+}
+
+function init(){
+  load();
+  UI = pickUiLang();
+
+  /* Sprachauswahl aus der Tabelle aufbauen – eine weitere Sprache in STRINGS
+     erscheint hier automatisch, ohne weitere Änderung. */
+  var sel = document.getElementById("uiLang");
+  Object.keys(STRINGS).forEach(function(code){
+    var o = document.createElement("option");
+    o.value = code;
+    o.textContent = STRINGS[code].langName || code;
+    sel.appendChild(o);
+  });
+  sel.value = UI;
+  sel.addEventListener("change", function(){ setUiLang(sel.value); });
+  applyStrings();
+
+  document.getElementById("fileName").textContent = PAYLOAD.fileName || "";
+  var n = Number(PAYLOAD.photoCount || 1);
+  document.getElementById("photoCount").textContent =
+    n > 1 ? t("photosSelected", n) : "";
+
+  renderAll();
+
+  wireSearch("depSearch", "depResults", function(e){
+    if (!state.depicts.some(function(x){ return x.id === e.id; })) {
+      state.depicts.push(e);
+    }
+    touch(); renderDepicts();
+  });
+  wireSearch("cdSearch", "cdResults", function(e){
+    state.createdDuring = e; touch(); renderCreatedDuring();
+  });
+
+  var catInput = document.getElementById("catInput");
+  catInput.addEventListener("keydown", function(ev){
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    var v = catInput.value.trim().replace(/^Category:\s*/i, "");
+    if (!v) return;
+    if (!state.categories.some(function(c){
+          return c.toLowerCase() === v.toLowerCase(); })) {
+      state.categories.push(v);
+    }
+    catInput.value = ""; touch(); renderCategories();
+  });
+  document.getElementById("catSuggest").addEventListener("click", suggestCategories);
+
+  document.getElementById("capAdd").addEventListener("click", function(){
+    state.captions.push({ lang: "", text: "" });
+    renderCaptions();
+    var rows = document.querySelectorAll("#caps .cap input.iso");
+    if (rows.length) rows[rows.length - 1].focus();
+  });
+
+  document.getElementById("freetext").addEventListener("input", function(ev){
+    state.freetext = ev.target.value; touch();
+  });
+
+  document.getElementById("sdcToWikitext").addEventListener("click", function(){
+    /* Hängt beides in einem Schritt an: Bildunterschriften als
+       {{sprache|1=…}}-Blöcke und Kategorien als [[Category:…]]-Zeilen.
+       Mehrfaches Klicken schadet nicht – was schon dasteht, kommt nicht
+       noch einmal dazu. */
+    var add = [];
+    state.captions.forEach(function(c){
+      var l = (c.lang || "").trim().toLowerCase(), t = (c.text || "").trim();
+      if (!/^[a-z]{2}[a-z0-9-]*$/.test(l) || !t) return;
+      var block = "{{" + l + "|1=" + t + "}}";
+      if (state.freetext.indexOf(block) < 0 && add.indexOf(block) < 0) add.push(block);
+    });
+    state.categories.forEach(function(c){
+      var line = "[[Category:" + c + "]]";
+      if (state.freetext.indexOf(line) < 0 && add.indexOf(line) < 0) add.push(line);
+    });
+    if (!add.length) { setStatus(t("allInWikitext")); return; }
+    state.freetext = (state.freetext ? state.freetext + "\n" : "") + add.join("\n");
+    document.getElementById("freetext").value = state.freetext;
+    touch();
+    setStatus(t("linesAppended", add.length));
+  });
+
+  document.getElementById("revertBtn").addEventListener("click", function(){
+    load(); dirty = false; renderAll();
+    document.getElementById("donePanel").classList.remove("open");
+    setStatus(t("reverted"));
+  });
+  document.getElementById("saveBtn").addEventListener("click", save);
+
+  document.getElementById("copyBtn").addEventListener("click", function(){
+    var ta = document.getElementById("doneData");
+    ta.select();
+    try { document.execCommand("copy"); setStatus(t("copied")); }
+    catch (e) { setStatus(t("copyFailed")); }
+  });
+
+  document.addEventListener("keydown", function(ev){
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "s") { ev.preventDefault(); save(); }
+  });
+  window.addEventListener("beforeunload", function(ev){
+    if (dirty) { ev.preventDefault(); ev.returnValue = ""; }
+  });
+
+  document.getElementById("depSearch").focus();
+
+  /* Brueckenbetrieb: Zustand holen und am Ereignisstrom haengen bleiben.
+     Faellt das aus, bleibt es bei den eingebetteten Daten – die Seite ist
+     dann nicht kaputt, nur nicht mitlaufend. */
+  if (BRIDGE) {
+    fetch(bridgeUrl("/state"))
+      .then(function(r){ return r.json(); })
+      .then(function(env){
+        if (env && env.state) {
+          BRIDGE.rev = env.rev;
+          adoptState(env.state);
+          UI = pickUiLang();
+          document.getElementById("uiLang").value = UI;
+          applyStrings();
+          renderAll();
+        }
+        setStatus(t("liveOn"), "done");
+      })
+      .catch(function(){ setStatus(t("liveOff"), "dirty"); });
+    connectBridge();
+  }
+}
+init();
+</script>
+</body>
+</html>

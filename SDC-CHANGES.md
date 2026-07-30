@@ -1,5 +1,66 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.37 (July 2026)
+
+**The background bridge.** The browser editor can now stay open and follow the
+photo selection in Lightroom. A small helper (`bridge/sdcbridge.go`, one Go
+file, standard library only) serves the editor page from
+`http://127.0.0.1:PORT/`. Because the page then has a real origin, it can use
+fetch and Server-Sent-Events without CORS and without the Private-Network
+block that killed the earlier loopback attempt from a `file://` page.
+
+Lightroom never listens. Once a second it calls `POST /sync`, which pushes the
+current photo's data when the selection changed, collects any pending result in
+the same response, and doubles as the heartbeat. Both directions are outgoing
+`LrHttp` calls, which are long proven in this plugin; `LrSocket` is not used at
+all.
+
+New files: `MediaWikiSdcBridge.lua` (Lightroom side), `ToolSdcBridge.lua`
+(switch it on and off), `MediaWikiSdcData.lua`. The last one is a genuine
+de-duplication: the payload building and result applying logic used to exist
+twice, once in `ToolEditSdcWeb.lua` and once in the bridge, so a change to the
+data model could land in only one of them. Both routes now share one module.
+`schemaVersion` is unchanged.
+
+**The file route stays.** Anyone who does not run the helper keeps the download
+mechanism from 2.0.31 exactly as it was. The bridge is off until switched on.
+
+**Safety.** The helper binds to 127.0.0.1 only, never to all interfaces. Every
+request must carry a session token that Lightroom generates fresh on each
+start; the comparison is constant-time. The Host header must name a loopback
+address, which defeats DNS rebinding from a hostile page. There is no SDK hook
+for unloading a plug-in, so the helper terminates itself after three minutes
+without a heartbeat and removes its port file.
+
+**A result is never written to the wrong photo.** If the user moved on in
+Lightroom between opening the page and pressing save, the photo key no longer
+matches and nothing is written; a dialog says so.
+
+**Architecture selection without guessing.** Both macOS builds ship. Rather
+than detecting the CPU (there is no documented SDK call, and shelling out to
+`uname -m` would be another unverifiable moving part), the launcher simply
+tries the arm64 build first with a short timeout and moves on to the x86_64
+build if no port file appears. A build the machine cannot run therefore costs a
+few seconds once instead of failing outright.
+
+**Not signed.** The shipped binaries carry no signature or notarisation, so
+macOS will ask once on first launch and Windows SmartScreen may warn. That has
+to be sorted out before wider distribution.
+
+**The binaries are not versioned.** `mediawiki.lrdevplugin/bin/` is ignored;
+the Go source is in the repository and `./baue-bruecke.sh` produces the three
+builds before packing. Git cannot delta-compress binaries, so committing them
+would add roughly five megabytes of new objects per platform per release to a
+history that can never be trimmed without rewriting every hash. A notarised
+binary is also not byte-identical to the built one, so a committed binary would
+only look like provenance.
+
+**Fixed while we were in there: `.gitignore` never worked.** Every rule was
+wrapped in double quotes (`".DS_Store"` and so on). Git treats quotes as
+literal characters, so the file matched nothing and `.DS_Store` had been
+shipping inside the release ZIPs. The rules are now unquoted and verified
+against `git check-ignore`.
+
 ## Version 2.0.36 (July 2026)
 
 **The built-in SDC dialog is gone.** `ToolEditSdc.lua` has been removed and

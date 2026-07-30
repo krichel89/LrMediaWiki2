@@ -50,6 +50,10 @@ return {
 			title = "🔁 Description fields ↔ Wikitext",
 			file = "ToolConvertDescriptionAll.lua",
 		},
+		{
+			title = "🔌 Hintergrund-App (SDC-Brücke)",
+			file = "ToolSdcBridge.lua",
+		},
 	},
 
 	-- The browser editor is deliberately the FIRST entry in both menus: it is
@@ -63,6 +67,10 @@ return {
 		{
 			title = "🔁 Description fields ↔ Wikitext",
 			file = "ToolConvertDescriptionAll.lua",
+		},
+		{
+			title = "🔌 Hintergrund-App (SDC-Brücke)",
+			file = "ToolSdcBridge.lua",
 		},
 		{
 			title = "🔍 Search and Replace Metadata",
@@ -100,6 +108,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 36,
+		revision = 37,
 	},
 }

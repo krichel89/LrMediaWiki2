@@ -1,3 +1,26 @@
-"*.lua~" 
-".DS_Store" 
-"Thumbs.db" 
+# Editor- und Betriebssystem-Krempel
+*.lua~
+*.bak
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# Bauergebnisse der Hintergrund-App.
+#
+# Quelltext ist bridge/sdcbridge.go, gebaut wird mit ./baue-bruecke.sh. Die
+# fertigen Programme gehoeren ins Release-ZIP, nicht in die Versionshistorie:
+# Git kann Binaerdateien nicht gegeneinander komprimieren, jede neue Fassung
+# waeren also rund fuenf Megabyte neue Objekte pro Plattform und Release, die
+# jeder Klon vollstaendig mitzieht. Ausserdem ist die notarisierte Fassung
+# nicht bytegleich mit der gebauten, eine committete Binaerdatei wuerde also
+# Nachvollziehbarkeit nur vortaeuschen.
+mediawiki.lrdevplugin/bin/
+
+# Go-Bauergebnisse, falls direkt im Quellordner gebaut wird
+bridge/sdcbridge
+bridge/sdcbridge.exe
+bridge/*.test
+
+# Auslieferungspakete
+LrMediaWiki2-complete-*.zip
