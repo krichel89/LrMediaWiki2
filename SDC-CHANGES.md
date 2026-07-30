@@ -1,5 +1,65 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.50 (July 2026)
+
+**Check stage 9 only ever worked on Linux.** It built the helper with a fixed
+`GOOS=linux` and then tried to run it, which on a Mac fails with "cannot execute
+binary file". The functional test now builds natively, without `GOOS`/`GOARCH`,
+and writes into `$TMPDIR` rather than a hardcoded `/tmp`.
+
+## Version 2.0.49 (July 2026)
+
+**The check script assumed `luac5.1` existed.** On a fresh Mac it does not:
+Homebrew disabled the `lua@5.1` formula in February 2024 because the 5.1 branch
+is no longer maintained upstream, so `brew install lua@5.1` fails.
+
+The script now looks for a Lua 5.1 interpreter among `lua5.1`, `lua-5.1`,
+`lua51`, `luajit` and plain `lua`, and accepts a candidate only if it reports
+`Lua 5.1`. That check matters: a newer Lua is worse than none, because it
+accepts syntax Lightroom will later reject, and the whole point of pinning 5.1
+is that it is the version inside the SDK. LuaJIT qualifies - it is slightly more
+permissive about extensions, but anything it rejects Lightroom rejects too.
+
+For the syntax check `luac5.1 -p` is still preferred where present; otherwise
+the interpreter does the same job through `loadfile`. Both paths were tried
+against a deliberately broken file, and the missing-Lua path prints what to
+install: `brew install luajit`, or the four lines that build 5.1.5 from source.
+
+## Version 2.0.48 (July 2026)
+
+**2.0.47 shipped an Info.lua with merge conflict markers in it.** The plug-in
+would not load at all: `Info.lua:111: unexpected symbol near '<'`. Line 111 is
+the `revision` line, which is exactly the line that conflicts when two clones
+disagree about the version number. Reproducing it locally gives that error
+message character for character.
+
+Nothing about the message points at a merge conflict, which is the real
+problem: a user sees a syntax error in a file they never touched.
+
+Two barriers, because one was clearly not enough:
+
+- Check stage 0, ahead of the syntax check, refuses any tree containing
+  conflict markers and says so in those words, with the `grep` that lists the
+  places.
+- `packe.sh` refuses to build a package from a plug-in folder containing them.
+  It is the single gate every package passes through, locally and in CI, so a
+  skipped check run cannot get past it.
+
+Both were verified against a genuinely damaged `Info.lua`.
+
+Worth stating plainly: the existing check suite would have caught this. Stage 1
+runs `luac5.1 -p` over every file and stage 2 loads `Info.lua`. Whatever
+produced that release did not run it.
+
+**Also in this version, from the notes list:**
+
+The stale-page banner now appears at the bottom of the editor as well as the
+top. On a long page the top one is off screen, and saving happens at the
+bottom - which is the moment it matters. Only the upper one carries
+`role="alert"` so screen readers do not announce the same text twice.
+
+Both scripts accept `y` as well as `j`.
+
 ## Version 2.0.47 (July 2026)
 
 **Restores the origin check that 2.0.46 lost.** When `release.sh` moved into the

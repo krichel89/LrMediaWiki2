@@ -107,6 +107,7 @@ button.primary:hover{filter:brightness(1.1); color:#10262b}
   border-radius:var(--r); background:#2a1f1e;
 }
 .stale.open{display:block}
+#staleBannerUnten{margin:1rem 0 0}
 .stale strong{color:var(--danger)}
 .stale p{margin:.35rem 0 0; color:var(--muted); font-size:13px}
 
@@ -289,6 +290,10 @@ footer .status.done{color:var(--accent)}
         </div>
       </section>
     </div>
+  </div>
+  <div class="stale" id="staleBannerUnten" aria-hidden="true">
+    <strong data-i18n="staleTitle">Diese Seite ist nicht mehr aktuell.</strong>
+    <p data-i18n="staleText"></p>
   </div>
 </main>
 
@@ -1244,13 +1249,18 @@ function suggestCategories(){
    Marke im Kopf als auch der Balken darunter. */
 function setBridgeState(zustand){
   var pill = document.getElementById("bridgePill");
+  /* Zwei Balken, oben und unten: bei einer langen Seite steht der obere
+     ausserhalb des Sichtfelds, und gerade beim Speichern ist man unten. */
   var banner = document.getElementById("staleBanner");
+  var bannerUnten = document.getElementById("staleBannerUnten");
   var text = document.querySelector("#staleBanner p");
+  var textUnten = document.querySelector("#staleBannerUnten p");
   pill.classList.remove("hidden", "live", "lost");
   if (zustand === "live") {
     pill.classList.add("live");
     pill.textContent = t("pillLive");
     banner.classList.remove("open");
+    bannerUnten.classList.remove("open");
   } else if (zustand === "lost" || zustand === "lrgone") {
     pill.classList.add("lost");
     pill.textContent = zustand === "lrgone" ? t("pillLrGone") : t("pillLost");
@@ -1258,11 +1268,15 @@ function setBridgeState(zustand){
        Bruecke kann er neu starten, ein neu gestartetes Lightroom laeuft
        dagegen schon auf einem NEUEN Port - dieser Tab ist dann endgueltig
        verloren, egal was er hier tut. */
-    text.textContent = zustand === "lrgone" ? t("staleTextLr") : t("staleText");
+    var meldung = zustand === "lrgone" ? t("staleTextLr") : t("staleText");
+    text.textContent = meldung;
+    textUnten.textContent = meldung;
     banner.classList.add("open");
+    bannerUnten.classList.add("open");
   } else {
     pill.textContent = t("pillFile");
     banner.classList.remove("open");
+    bannerUnten.classList.remove("open");
   }
 }
 

@@ -29,6 +29,69 @@ else
 	echo "Testdateien nicht gefunden - die drei Testreihen werden uebersprungen."
 fi
 
+# --- Lua 5.1 finden -------------------------------------------------------
+#
+# Es MUSS die Fassung 5.1 sein: genau die steckt im Lightroom-SDK. Eine
+# neuere waere schlimmer als keine, weil sie Schreibweisen durchwinkt, an
+# denen Lightroom dann scheitert (goto, Bitoperatoren, das fehlende
+# table.unpack in 5.1 und so weiter).
+#
+# Homebrew hat lua@5.1 im Februar 2024 abgeschaltet, weil es upstream nicht
+# mehr gepflegt wird - deshalb wird hier gesucht statt vorausgesetzt.
+# LuaJIT gilt als 5.1-tauglich; es ist bei den Erweiterungen etwas grosszuegiger
+# (es kennt zum Beispiel goto), aber alles, was es ablehnt, lehnt auch
+# Lightroom ab.
+LUA51=""
+for k in lua5.1 lua-5.1 lua51 luajit lua; do
+	command -v "$k" >/dev/null 2>&1 || continue
+	v=$("$k" -e 'io.write(_VERSION)' 2>/dev/null || true)
+	if [ "$v" = "Lua 5.1" ]; then LUA51="$k"; break; fi
+done
+if [ -z "$LUA51" ]; then
+	cat >&2 <<'HINWEIS'
+FEHLER: kein Lua 5.1 gefunden.
+
+Gebraucht wird genau 5.1 - das ist die Fassung im Lightroom-SDK. Eine neuere
+Fassung waere schlimmer als keine: sie winkt Schreibweisen durch, an denen
+Lightroom spaeter scheitert.
+
+Homebrew hat lua@5.1 im Februar 2024 abgeschaltet. Zwei Wege:
+
+  1. LuaJIT, schnell und aus dem Hauptbestand:
+       brew install luajit
+
+  2. Lua 5.1.5 selbst bauen, ohne Abhaengigkeiten:
+       curl -LO https://www.lua.org/ftp/lua-5.1.5.tar.gz
+       tar xf lua-5.1.5.tar.gz && cd lua-5.1.5
+       make macosx
+       sudo make install INSTALL_TOP=/usr/local
+       sudo ln -sf /usr/local/bin/lua  /usr/local/bin/lua5.1
+       sudo ln -sf /usr/local/bin/luac /usr/local/bin/luac5.1
+HINWEIS
+	exit 1
+fi
+
+# Syntaxpruefung: luac ist das passende Werkzeug und meldet schoener, gibt es
+# aber nicht ueberall. Sonst tut es der Interpreter mit loadfile - dieselbe
+# Pruefung, dieselbe Sprachfassung.
+if command -v luac5.1 >/dev/null 2>&1; then
+	LUAC="luac5.1 -p"
+elif command -v luac-5.1 >/dev/null 2>&1; then
+	LUAC="luac-5.1 -p"
+else
+	LUAC=""
+fi
+pruefe_syntax() {
+	if [ -n "$LUAC" ]; then
+		$LUAC "$1"
+	else
+		# Der Umbruch als '\n' in EINFACHEN Anfuehrungszeichen. In [[ ]] waere
+		# er ein wortwoertliches Backslash-n und stuende so in der Meldung.
+		"$LUA51" -e "local f, e = loadfile([[$1]]); if not f then io.stderr:write(e, '\n'); os.exit(1) end"
+	fi
+}
+echo "Lua 5.1: $LUA51$([ -n "$LUAC" ] && echo " (Syntaxpruefung mit ${LUAC%% *})" || echo " (Syntaxpruefung ueber loadfile)")"
+
 # Eine Testreihe laufen lassen, falls vorhanden.
 reihe() {
 	local datei="$1"; shift
@@ -42,11 +105,37 @@ PLUG=$REPO/mediawiki.lrdevplugin
 export GOFLAGS=-mod=mod GOCACHE=/tmp/gocache GOPATH=/tmp/gopath
 
 echo "=============================================================="
-echo " 1. Lua-Syntax (luac5.1 -p) auf ALLE Dateien"
+echo " 0. Merge-Konfliktreste"
+echo "=============================================================="
+# Muss VOR der Syntaxpruefung laufen. Ein steckengebliebener Konfliktmarker
+# meldet sich sonst als "unexpected symbol near '<'" mit einer Zeilennummer -
+# eine Meldung, aus der niemand auf einen Merge-Konflikt schliesst. Genau das
+# ist bei 2.0.47 passiert: das ausgelieferte Info.lua trug die Marker, und der
+# Nutzer bekam nur den Syntaxfehler zu sehen.
+#
+# Gesucht wird am Zeilenanfang, damit die Marker in diesem Kommentar hier
+# nicht selbst anschlagen.
+konflikte=$(grep -rlE '^(<{7}|={7}|>{7})( |$)' \
+	--include='*.lua' --include='*.md' --include='*.go' --include='*.html' \
+	--include='*.sh' --include='*.txt' --include='*.yml' \
+	"$REPO" 2>/dev/null || true)
+if [ -n "$konflikte" ]; then
+	echo "   FEHLER: diese Dateien enthalten Merge-Konfliktreste:"
+	echo "$konflikte" | sed "s#^$REPO/#     #"
+	echo
+	echo "   Auflösen, dann erst weiter. Stellen zeigen:"
+	echo "     grep -rn '^<<<<<<<' \"$REPO\""
+	exit 1
+fi
+echo "   keine Konfliktreste"
+
+echo
+echo "=============================================================="
+echo " 1. Lua-Syntax auf ALLE Dateien"
 echo "=============================================================="
 n=0
 for f in $PLUG/*.lua $REPO/tools/*.lua; do
-	luac5.1 -p "$f"
+	pruefe_syntax "$f"
 	n=$((n+1))
 done
 echo "   $n Dateien syntaktisch in Ordnung"
@@ -55,7 +144,7 @@ echo
 echo "=============================================================="
 echo " 2. Info.lua wirklich laden und Menü prüfen"
 echo "=============================================================="
-( cd $PLUG && lua5.1 - <<'EOF'
+( cd $PLUG && "$LUA51" - <<'EOF'
 local info = assert(loadfile('Info.lua'))()
 assert(info.LrPluginName == 'LrMediaWiki2')
 assert(info.LrToolkitIdentifier == 'org.ireas.lightroom.mediawiki',
@@ -161,13 +250,13 @@ echo
 echo "=============================================================="
 echo " 5. Editorseite gegen die Lua-Vorlage (Byte-Gleichheit)"
 echo "=============================================================="
-( cd $REPO && lua5.1 tools/check-template.lua | sed 's/^/   /' )
+( cd "$REPO" && "$LUA51" tools/check-template.lua | sed 's/^/   /' )
 
 echo
 echo "=============================================================="
 echo " 6. Reine Lua-Logik, Ausschnitt frisch aus der Quelle"
 echo "=============================================================="
-reihe test_sdcdata_pure.lua lua5.1
+reihe test_sdcdata_pure.lua "$LUA51"
 
 echo
 echo "=============================================================="
@@ -182,6 +271,7 @@ echo "=============================================================="
 reihe test_compose_js.js node
 
 echo
+HOSTBIN="${TMPDIR:-/tmp}/sdcbridge-host"
 echo "=============================================================="
 echo " 8. Hintergrund-App: go vet und Bau aller Zielplattformen"
 echo "=============================================================="
@@ -190,9 +280,12 @@ echo "=============================================================="
 CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-arm64     ./sdcbridge.go
 CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-x86_64    ./sdcbridge.go
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-win-amd64.exe ./sdcbridge.go
-CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/sdcbridge-linux                                ./sdcbridge.go )
+# Fuer den Funktionstest eine Fassung fuer DIESEN Rechner - ohne GOOS/GOARCH,
+# also nativ. Vorher stand hier fest GOOS=linux; auf einem Mac liess sich das
+# Ergebnis nicht starten ("cannot execute binary file").
+CGO_ENABLED=0 go build -trimpath -o "$HOSTBIN" ./sdcbridge.go )
 chmod 755 $PLUG/bin/*
-echo "   drei Zielplattformen gebaut, dazu Linux fuer den Funktionstest"
+echo "   drei Zielplattformen gebaut, dazu eine Fassung fuer diesen Rechner"
 
 echo
 echo "=============================================================="
@@ -200,7 +293,7 @@ echo " 9. Funktionstest der Hintergrund-App (echter HTTP-Umlauf)"
 echo "=============================================================="
 HTML=$REPO/editor/sdc-editor.html
 rm -f /tmp/pf.txt /tmp/sse.txt /tmp/page.html
-/tmp/sdcbridge-linux --token GEHEIM --page "$HTML" --portfile /tmp/pf.txt --idle 3m --log /tmp/bridge.log &
+"$HOSTBIN" --token GEHEIM --page "$HTML" --portfile /tmp/pf.txt --idle 3m --log /tmp/bridge.log &
 SRV=$!
 for i in $(seq 1 60); do [ -s /tmp/pf.txt ] && break; sleep 0.1; done
 PORT=$(python3 -c "import json;print(json.load(open('/tmp/pf.txt'))['port'])")

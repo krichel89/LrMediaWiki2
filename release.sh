@@ -48,7 +48,9 @@ frage() {
 	[ "$DRYRUN" = 1 ] && { info "[trocken] Rueckfrage uebersprungen"; return 1; }
 	printf '   %s [j/N] ' "$1"
 	read -r a
-	[ "$a" = j ] || [ "$a" = J ]
+	# j wie ja, y wie yes - je nach Tastaturbelegung tippt sich das eine
+	# leichter als das andere.
+	case "$a" in j|J|y|Y) return 0 ;; *) return 1 ;; esac
 }
 
 LOG=$(mktemp "${TMPDIR:-/tmp}/lrmw2rel.XXXXXX")

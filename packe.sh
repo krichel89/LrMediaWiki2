@@ -39,6 +39,17 @@ if [ ! -d "$PLUG/bin" ] || [ -z "$(ls -A "$PLUG/bin" 2>/dev/null)" ]; then
 	echo "         Vorher ./baue-bruecke.sh aufrufen."
 fi
 
+# Letzte Sperre vor dem Packen. packe.sh ist die einzige Stelle, durch die
+# jedes Paket geht - lokal wie in CI. Ein Konfliktrest darf hier nicht
+# vorbeikommen, auch wenn jemand das Pruefskript uebersprungen hat.
+konflikte=$(grep -rlE '^(<{7}|={7}|>{7})( |$)' "$PLUG" 2>/dev/null || true)
+if [ -n "$konflikte" ]; then
+	echo "FEHLER: Merge-Konfliktreste im Zusatzmodul-Ordner:" >&2
+	echo "$konflikte" | sed 's/^/  /' >&2
+	echo "Erst aufloesen, dann packen." >&2
+	exit 1
+fi
+
 mkdir -p "$ZIEL"
 NUTZER="$ZIEL/LrMediaWiki2-$VERSION.zip"
 VOLL="$ZIEL/LrMediaWiki2-complete-$VERSION.zip"
