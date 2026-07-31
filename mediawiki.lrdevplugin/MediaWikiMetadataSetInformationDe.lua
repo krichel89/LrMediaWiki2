@@ -22,10 +22,10 @@ local Info = require 'Info'
 local pf = Info.LrToolkitIdentifier .. '.' -- Prefix, e.g. 'org.ireas.lightroom.mediawiki.'
 
 return {
-	id = 'LrMediaWikiMetadataSetInformationDe', -- needs to be unique!
-	title = 'LrMediaWiki – Information (de)', -- no localization needed
+	id = 'LrMediaWiki2MetadataSetInformationDe', -- needs to be unique!
+	title = 'LrMediaWiki2 – Information (de)', -- no localization needed
 	items = {
-		{ 'com.adobe.label', label = 'LrMediaWiki – Information (de)' }, -- no localization needed
+		{ 'com.adobe.label', label = 'LrMediaWiki2 – Information (de)' }, -- no localization needed
 		{ pf .. 'caption_en', label = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)" },
 		{ pf .. 'description_de', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionDeLabel=Description (de)", height_in_lines = 3 },
 		{ pf .. 'depicts', label = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)" },

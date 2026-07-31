@@ -22,20 +22,26 @@ return {
 		file = 'MediaWikiExportServiceProvider.lua',
 	},
 
+	-- Die sechs Workflow-Saetze stehen oben: ihre Bezeichnungen und Felder
+	-- kommen aus ~/LrMediaWiki2/workflows.toml und stimmen deshalb immer mit
+	-- dem Editor ueberein. Darunter die beiden Werkzeugsaetze, die zu keinem
+	-- Workflow gehoeren: alle Felder auf einmal, und nur der Wikitext.
 	LrMetadataTagsetFactory = {
+		'MediaWikiMetadataSetWorkflow1.lua',
+		'MediaWikiMetadataSetWorkflow2.lua',
+		'MediaWikiMetadataSetWorkflow3.lua',
+		'MediaWikiMetadataSetWorkflow4.lua',
+		'MediaWikiMetadataSetWorkflow5.lua',
+		'MediaWikiMetadataSetWorkflow6.lua',
 		'MediaWikiMetadataSetAll.lua',
-		'MediaWikiMetadataSetInformation.lua',
-		'MediaWikiMetadataSetInformationDe.lua',
 		'MediaWikiMetadataSetDescriptionAll.lua',
-		'MediaWikiMetadataSetArtwork.lua',
-		'MediaWikiMetadataSetObjectPhoto.lua',
 	},
 
 	LrMetadataProvider = 'MediaWikiMetadataProvider.lua',
 
 	LrPluginInfoProvider = 'MediaWikiPluginInfoProvider.lua',
 
-	LrPluginInfoUrl = 'https://commons.wikimedia.org/wiki/Commons:LrMediaWiki',
+	LrPluginInfoUrl = 'https://github.com/krichel89/LrMediaWiki2',
 
 	-- Same tools additionally in the Library menu (Bibliothek >
 	-- Zusatzmoduloptionen), one menu closer to metadata work. The titles are
@@ -108,6 +114,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 51,
+		revision = 61,
 	},
 }

@@ -150,8 +150,8 @@ jobs:
           gh release create "v$V" \
             --title "LrMediaWiki2 $V" \
             --notes-file "$RUNNER_TEMP/notes.md" \
-            "dist/LrMediaWiki2-$V.zip#Zusatzmodul zum Installieren" \
-            "dist/LrMediaWiki2-complete-$V.zip#Alles inklusive Quelltext"
+            "dist/LrMediaWiki2-$V.zip#LrMediaWiki2-$V.zip" \
+            "dist/LrMediaWiki2-complete-$V.zip#LrMediaWiki2-complete-$V.zip mit Quelltext"
 
       # Auch ohne Tag nuetzlich: die Pakete haengen am Lauf und lassen sich
       # herunterladen, etwa zum Ausprobieren vor dem Veroeffentlichen.

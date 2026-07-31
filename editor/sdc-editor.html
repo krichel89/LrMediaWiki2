@@ -124,6 +124,17 @@ button.primary:hover{filter:brightness(1.1); color:#10262b}
   text-align:left; cursor:pointer; border-bottom:1px solid var(--line);
 }
 .results .hit:last-child{border-bottom:0}
+
+/* Ankreuzfeld „auf alle markierten“ in der Fusszeile ---------------------- */
+.allsel{display:flex; gap:.4rem; align-items:center; white-space:nowrap}
+.allsel.hidden{display:none}
+.allsel input{width:auto; margin:0}
+
+/* Pfadzeile zur Workflow-Datei ------------------------------------------- */
+#preview .h{color:var(--accent); font-weight:600}
+
+#wfNote code{font-family:inherit; background:var(--accent-dim); color:#fff;
+  padding:.05rem .3rem; border-radius:4px; user-select:all}
 .results .hit:hover,.results .hit.sel{background:var(--accent-dim); color:#fff}
 .results .hit .qid{font:12.5px var(--mono); color:var(--accent); flex:none}
 .results .hit:hover .qid,.results .hit.sel .qid{color:#cfeff6}
@@ -192,8 +203,11 @@ footer .status.done{color:var(--accent)}
   <span class="file" id="fileName">–</span>
   <span class="count" id="photoCount"></span>
   <span class="pill hidden" id="bridgePill"></span>
+  <select id="workflowSel" class="hidden" aria-label="Workflow"></select>
   <select id="uiLang" aria-label="Sprache / Language"></select>
 </header>
+
+<p class="hint hidden" id="wfNote" style="margin:.4rem .9rem 0"></p>
 
 <div class="stale" id="staleBanner" role="alert">
   <strong data-i18n="staleTitle">Diese Seite ist nicht mehr aktuell.</strong>
@@ -203,7 +217,7 @@ footer .status.done{color:var(--accent)}
 <main>
   <div>
     <!-- Depicts ------------------------------------------------------------ -->
-    <section>
+    <section id="secDepicts">
       <h2><span data-i18n="depictsTitle">Zeigt</span> <span class="pid">P180</span></h2>
       <p class="hint" data-i18n="depictsHint"></p>
       <div class="rowline">
@@ -215,7 +229,7 @@ footer .status.done{color:var(--accent)}
     </section>
 
     <!-- Kategorien --------------------------------------------------------- -->
-    <section>
+    <section id="secKategorien">
       <h2 data-i18n="catTitle">Kategorien</h2>
       <p class="hint" data-i18n="catHint"></p>
       <div class="rowline">
@@ -227,7 +241,7 @@ footer .status.done{color:var(--accent)}
     </section>
 
     <!-- Created during ----------------------------------------------------- -->
-    <section>
+    <section id="secVeranstaltung">
       <h2><span data-i18n="cdTitle">Entstanden bei</span> <span class="pid">P10408</span></h2>
       <p class="hint" data-i18n="cdHint"></p>
       <div class="rowline">
@@ -239,7 +253,7 @@ footer .status.done{color:var(--accent)}
     </section>
 
     <!-- Bildunterschriften ------------------------------------------------- -->
-    <section>
+    <section id="secUnterschriften">
       <h2 data-i18n="capTitle">Bildunterschriften</h2>
       <p class="hint" data-i18n="capHint"></p>
       <div id="caps"></div>
@@ -259,7 +273,7 @@ footer .status.done{color:var(--accent)}
     </section>
 
     <!-- Wikitext ----------------------------------------------------------- -->
-    <section>
+    <section id="secWikitext">
       <h2 data-i18n="freeTitle">Weiterer Wikitext</h2>
       <p class="hint" data-i18n="freeHint"></p>
       <textarea id="freetext" spellcheck="false"></textarea>
@@ -307,6 +321,10 @@ footer .status.done{color:var(--accent)}
 
 <footer>
   <span class="status" id="status" data-i18n="ready">Bereit.</span>
+  <label class="allsel hidden" id="applyAllBox">
+    <input type="checkbox" id="applyAll">
+    <span id="applyAllText"></span>
+  </label>
   <button id="revertBtn" data-i18n="revert">Änderungen verwerfen</button>
   <button class="primary" id="saveBtn" data-i18n="save">Speichern und zu Lightroom</button>
 </footer>
@@ -327,6 +345,10 @@ var PAYLOAD = {
   token: "",
   photoKey: "",          /* Kennung des Fotos; geht mit dem Ergebnis zurück */
   connectors: {},        /* gelernte Fügungen, "Q…|de" -> "bei der" */
+  forms: {},             /* gelernte Anzeigeformen, "Q…|de" -> flektiert */
+  workflowsToml: "",     /* Rohtext von ~/LrMediaWiki2/workflows.toml */
+  workflow: "",          /* gemerkter Workflow-Schluessel, "" = keiner */
+  applyToAll: false,     /* Voreinstellung des Hakens bei Mehrfachauswahl */
   uiLang: "",            /* leer = Sprache des Browsers */
   depicts: "Q640 # Harald Krichel; Q42 # Douglas Adams",
   createdDuring: "Q124692383 # Berlinale 2026",
@@ -365,7 +387,7 @@ var STRINGS = {
     capHint: "Je Sprache eine Zeile. Sprachcode links ist frei überschreibbar.",
     capAdd: "Sprache hinzufügen",
     composeTitle: "Satzbau",
-    composeHint: "Erzeugt Bildunterschrift und Beschreibung aus den Motiven und der Veranstaltung – für jede Sprache, die schon eine Bildunterschrift hat. Die Fügung je Sprache steht unten; bleibt sie leer, wird die kasusfreie Form „Name, Veranstaltung“ genommen statt falsch zu flektieren.",
+    composeHint: "Erzeugt Bildunterschrift und Beschreibung aus den Motiven und der Veranstaltung – für jede Sprache, die schon eine Bildunterschrift hat. Die Fügung je Sprache steht unten; bleibt sie leer, wird die kasusfreie Form „Name, Veranstaltung“ genommen statt falsch zu flektieren. Das zweite Feld nimmt die gebeugte Anzeigeform der Veranstaltung auf – sie ersetzt nur den sichtbaren Text, das Linkziel bleibt der Artikeltitel.",
     composeBtn: "Unterschriften erzeugen",
     composeBusy: "Hole Bezeichnungen und Artikel von Wikidata …",
     composeDone: "{0} Sprache(n) erzeugt.",
@@ -373,6 +395,13 @@ var STRINGS = {
     composeNoLangs: "Erst eine Bildunterschrift-Sprache anlegen.",
     composeFailed: "Wikidata war nicht erreichbar – nichts geändert.",
     connPh: "Fügung, z. B. „bei der“",
+    formPh: "Anzeigeform, falls gebeugt",
+    applyAll: "auf alle {0} markierten Fotos",
+    wfNone: "(ohne Workflow)",
+    wfWhere: "Keine Workflows. Die Datei zum Bearbeiten liegt hier:",
+    wfFile: "Workflows bearbeiten in:",
+    wfClearAsk: "Dieser Workflow blendet gef\u00fcllte Abschnitte aus: {0}. Inhalte leeren?",
+    wfBadFile: "workflows.toml fehlerhaft \u2013 {0}",
     pillLive: "mit Lightroom verbunden",
     pillLost: "Verbindung verloren",
     pillLrGone: "Lightroom antwortet nicht",
@@ -387,12 +416,12 @@ var STRINGS = {
     freeHint: "Alles, was nicht als strukturierte Daten abgelegt wird – Vorlagen, Kommentare, Beschreibungsblöcke.",
     sdcToWikitext: "SDC zu Wikitext",
     previewTitle: "Das wird gespeichert",
-    previewHint: "Der Inhalt des Felds „Wikitext“, genau so, wie das Zusatzmodul ihn ablegt.",
+    previewHint: "Der Inhalt des Felds „Raw Metadata“, genau so, wie das Zusatzmodul ihn ablegt.",
     previewEmpty: "(leer)",
     save: "Speichern und zu Lightroom",
     revert: "Änderungen verwerfen",
     copy: "In die Zwischenablage",
-    copyPreviewTitle: "Wikitext in die Zwischenablage kopieren",
+    copyPreviewTitle: "Raw Metadata in die Zwischenablage kopieren",
     remove: "Entfernen",
     noLabel: "ohne Bezeichnung",
     ready: "Bereit.",
@@ -442,7 +471,7 @@ var STRINGS = {
     capHint: "One line per language. The language code on the left can be overwritten freely.",
     capAdd: "Add a language",
     composeTitle: "Sentence building",
-    composeHint: "Composes caption and description from the depicted subjects and the event, for every language that already has a caption. The connecting words per language are below; left empty, the case-free form “Name, Event” is used instead of inflecting wrongly.",
+    composeHint: "Composes caption and description from the depicted subjects and the event, for every language that already has a caption. The connecting words per language are below; left empty, the case-free form “Name, Event” is used instead of inflecting wrongly. The second field holds an inflected display form for the event – it replaces only the visible text, never the link target.",
     composeBtn: "Compose captions",
     composeBusy: "Fetching labels and articles from Wikidata …",
     composeDone: "Composed {0} language(s).",
@@ -450,6 +479,13 @@ var STRINGS = {
     composeNoLangs: "Add a caption language first.",
     composeFailed: "Wikidata was unreachable – nothing changed.",
     connPh: "connector, e.g. “at the”",
+    formPh: "display form, if inflected",
+    applyAll: "to all {0} selected photos",
+    wfNone: "(no workflow)",
+    wfWhere: "No workflows. The file to edit is here:",
+    wfFile: "Edit workflows in:",
+    wfClearAsk: "This workflow hides filled sections: {0}. Clear their contents?",
+    wfBadFile: "workflows.toml invalid \u2013 {0}",
     pillLive: "connected to Lightroom",
     pillLost: "connection lost",
     pillLrGone: "Lightroom not answering",
@@ -464,12 +500,12 @@ var STRINGS = {
     freeHint: "Everything that is not stored as structured data – templates, comments, description blocks.",
     sdcToWikitext: "SDC to wikitext",
     previewTitle: "What will be saved",
-    previewHint: "The contents of the “Wikitext” field, exactly as the plug-in stores them.",
+    previewHint: "The contents of the “Raw Metadata” field, exactly as the plug-in stores them.",
     previewEmpty: "(empty)",
     save: "Save and back to Lightroom",
     revert: "Discard changes",
     copy: "Copy to clipboard",
-    copyPreviewTitle: "Copy the wikitext to the clipboard",
+    copyPreviewTitle: "Copy the raw metadata to the clipboard",
     remove: "Remove",
     noLabel: "no label",
     ready: "Ready.",
@@ -549,11 +585,12 @@ var MIN_CHARS = 3, DEBOUNCE = 250, MAX_HITS = 8;
    wieder zusammengesetzt.
 --------------------------------------------------------------------------- */
 var state = { depicts: [], createdDuring: null, categories: [], captions: [],
-              freetext: "", connectors: {} };
+              freetext: "", connectors: {}, forms: {}, workflow: "",
+              applyToAll: false };
 
 /* Was Wikidata ueber die benutzten Q-Items weiss. Wird beim Erzeugen gefuellt
    und dann in COMPOSE hineingegeben. */
-var DETAILS = { labels: {}, sitelinks: {}, human: {}, conn: {} };
+var DETAILS = { labels: {}, sitelinks: {}, human: {}, conn: {}, form: {} };
 var dirty = false;
 
 function splitTokens(s){
@@ -582,6 +619,9 @@ function load(){
   state.connectors = {};
   var conn = PAYLOAD.connectors || {};
   Object.keys(conn).forEach(function(k){ state.connectors[k] = conn[k]; });
+  state.forms = {};
+  var frm = PAYLOAD.forms || {};
+  Object.keys(frm).forEach(function(k){ state.forms[k] = frm[k]; });
   state.captions = [];
   var caps = PAYLOAD.captions || {};
   ["de","en","fr","it"].forEach(function(l){
@@ -593,6 +633,167 @@ function load(){
     }
   });
   state.freetext = PAYLOAD.freetext || "";
+  /* Workflows: Datei bei jedem Laden neu zerlegen - bei laufender Bruecke
+     kommt mit jedem Fotowechsel ein frischer Payload, eine geaenderte Datei
+     wirkt also ohne Neustart. Ein gemerkter Schluessel, den die Datei nicht
+     mehr kennt, faellt still auf "kein Workflow" zurueck. */
+  /* Haken nur bei Mehrfachauswahl ueberhaupt moeglich. Voreinstellung kommt
+     aus Lightroom (gemerkt wie die Sprache); bei einem einzelnen Foto ist er
+     immer aus, damit nichts Ueberraschendes passiert. */
+  state.applyToAll = photoCount() > 1 && !!PAYLOAD.applyToAll;
+  renderApplyAll();
+  WF = WORKFLOWS.parse(PAYLOAD.workflowsToml || "");
+  state.workflow = WF.byKey[PAYLOAD.workflow || ""] ? PAYLOAD.workflow : "";
+  renderWorkflowSelect();
+  renderWorkflowNote();
+  if (PAYLOAD.workflowsNote) setStatus(PAYLOAD.workflowsNote, "dirty");
+  else if (WF.error) setStatus(t("wfBadFile", WF.error), "dirty");
+}
+
+/* ---------------------------------------------------------------------------
+   „Auf alle markierten Fotos anwenden“
+
+   Der Haken erscheint nur, wenn Lightroom mehr als ein Foto markiert
+   gemeldet hat. Bei laufender Bruecke wird die Zahl bei jeder Aenderung der
+   Markierung neu geschickt, die Beschriftung stimmt also mit dem ueberein,
+   was in Lightroom markiert ist. Lightroom schreibt NUR, wenn die Zahl beim
+   Speichern noch dieselbe ist - sonst lieber gar nichts.
+--------------------------------------------------------------------------- */
+function photoCount(){ return Number(PAYLOAD.photoCount || 1) || 1; }
+
+function renderApplyAll(){
+  var n = photoCount();
+  var box = document.getElementById("applyAllBox");
+  var cb = document.getElementById("applyAll");
+  if (n < 2) { box.classList.add("hidden"); cb.checked = false; return; }
+  box.classList.remove("hidden");
+  cb.checked = !!state.applyToAll;
+  document.getElementById("applyAllText").textContent = t("applyAll", n);
+}
+
+/* ---------------------------------------------------------------------------
+   Workflows: Auswahlfeld, Sichtbarkeit, Vorbelegung
+--------------------------------------------------------------------------- */
+var WF = { list: [], byKey: {}, error: "" };
+
+var WF_SECTIONS = { depicts: "secDepicts", kategorien: "secKategorien",
+                    veranstaltung: "secVeranstaltung",
+                    unterschriften: "secUnterschriften",
+                    satzbau: "composeSection", wikitext: "secWikitext" };
+
+function currentWorkflow(){ return WF.byKey[state.workflow] || null; }
+
+/* Sagt IMMER, wo die Datei liegt - auch dann, wenn Workflows drin sind.
+   Beim ersten Bau stand die Zeile nur bei LEERER Liste, und genau dann
+   suchte der Nutzer die Datei, die laengst da war, vergeblich. Der Pfad ist
+   markierbar, damit er sich kopieren laesst. */
+function renderWorkflowNote(){
+  var el = document.getElementById("wfNote");
+  var pfad = PAYLOAD.workflowsPath || "";
+  if (!pfad) { el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  var vorn = PAYLOAD.workflowsNote
+    || (WF.list.length ? t("wfFile") : t("wfWhere"));
+  el.textContent = "";
+  el.appendChild(document.createTextNode(vorn + " "));
+  var code = document.createElement("code");
+  code.textContent = pfad;
+  el.appendChild(code);
+}
+
+function renderWorkflowSelect(){
+  var sel = document.getElementById("workflowSel");
+  sel.innerHTML = "";
+  if (!WF.list.length) { sel.classList.add("hidden"); return; }
+  sel.classList.remove("hidden");
+  var none = document.createElement("option");
+  none.value = "";
+  none.textContent = t("wfNone");
+  sel.appendChild(none);
+  WF.list.forEach(function(w){
+    var o = document.createElement("option");
+    o.value = w.schluessel;
+    o.textContent = WORKFLOWS.displayName(w, UI);
+    sel.appendChild(o);
+  });
+  sel.value = state.workflow;
+}
+
+/* Sichtbarkeit und Beispieltext. Verstecken heisst NUR verstecken: die
+   Daten eines versteckten Abschnitts reisen unveraendert mit und werden
+   gespeichert - geleert wird ausschliesslich nach der Nachfrage beim
+   Wechsel. */
+function applyWorkflowView(){
+  var wf = currentWorkflow();
+  Object.keys(WF_SECTIONS).forEach(function(f){
+    var el = document.getElementById(WF_SECTIONS[f]);
+    if (!el) return;
+    var aus = wf && wf.felder_aus.indexOf(f) >= 0;
+    el.style.display = aus ? "none" : "";
+  });
+  var ft = document.getElementById("freetext");
+  ft.placeholder = (wf && wf.beispiel.wikitext) || "";
+}
+
+/* Vorbelegung: fuellt NUR LEERE Felder, gibt zurueck, ob sich etwas
+   geaendert hat. */
+function applyWorkflowPrefill(){
+  var wf = currentWorkflow();
+  if (!wf) return false;
+  var v = wf.vorbelegung, changed = false;
+  if (v.depicts && state.depicts.length === 0) {
+    state.depicts = splitTokens(v.depicts).map(parseToken).filter(Boolean);
+    changed = changed || state.depicts.length > 0;
+  }
+  if (v.veranstaltung && !state.createdDuring) {
+    var cd = splitTokens(v.veranstaltung).map(parseToken).filter(Boolean);
+    if (cd.length) { state.createdDuring = cd[0]; changed = true; }
+  }
+  if (v.kategorien && state.categories.length === 0) {
+    state.categories = splitTokens(v.kategorien);
+    changed = changed || state.categories.length > 0;
+  }
+  if (v.wikitext && state.freetext.trim() === "") {
+    state.freetext = v.wikitext;
+    changed = true;
+  }
+  return changed;
+}
+
+function workflowFilledMap(){
+  var capsFilled = state.captions.some(function(c){
+    return (c.text || "").trim() !== "";
+  });
+  return {
+    depicts: state.depicts.length > 0,
+    kategorien: state.categories.length > 0,
+    veranstaltung: !!state.createdDuring,
+    unterschriften: capsFilled,
+    wikitext: state.freetext.trim() !== ""
+  };
+}
+
+function onWorkflowPicked(key){
+  var wf = WF.byKey[key] || null;
+  var zu = WORKFLOWS.fieldsToClear(wf, workflowFilledMap());
+  if (zu.length) {
+    /* NIE still leeren - das Undo der Seite deckt nur die Eingabefelder. */
+    if (window.confirm(t("wfClearAsk", zu.join(", ")))) {
+      zu.forEach(function(f){
+        if (f === "depicts") state.depicts = [];
+        if (f === "kategorien") state.categories = [];
+        if (f === "veranstaltung") state.createdDuring = null;
+        if (f === "wikitext") state.freetext = "";
+        if (f === "unterschriften") {
+          state.captions.forEach(function(c){ c.text = ""; });
+        }
+      });
+    }
+  }
+  state.workflow = wf ? key : "";
+  applyWorkflowPrefill();
+  touch();
+  renderAll();
 }
 
 /* ---------------------------------------------------------------------------
@@ -889,6 +1090,228 @@ function renderCaptions(){
 /* Der Wikitext, genau im Format des Zusatzmoduls: je Nummer eine eigene
    depicts-Zeile, danach created_during, dann der freie Text. */
 /* ===========================================================================
+   Workflows aus ~/LrMediaWiki2/workflows.toml
+
+   Reine Logik ohne DOM und ohne Netz, wie COMPOSE - der Parser und die
+   Entscheidungen werden ausserhalb des Browsers geprueft. Der Rohtext kommt
+   mit dem Payload aus Lightroom; die Datei selbst pflegt der Nutzer.
+
+   Absichtlich nur der TOML-AUSSCHNITT, den die Vorlage benutzt:
+   Kommentare, [[workflow]], [workflow.vorbelegung], [workflow.beispiel],
+   schluessel = "wert" und felder_aus = ["a", "b"]. Alles andere ist ein
+   FEHLER mit Zeilennummer - eine still verschluckte Zeile waere schlimmer,
+   der Nutzer glaubte sonst, seine Datei wirke.
+--------------------------------------------------------------------------- */
+var WORKFLOWS = (function(){
+
+  var FIELDS = ["depicts", "kategorien", "veranstaltung", "unterschriften",
+                "satzbau", "wikitext"];
+  var PREFILL_KEYS = ["depicts", "veranstaltung", "kategorien", "wikitext"];
+  var EXAMPLE_KEYS = ["wikitext"];
+
+  /* Zerlegt EINE Wertangabe: "zeichenkette" oder ["a", "b"]. Gibt
+     { value: ... } oder { error: "..." } zurueck. */
+  function parseString(s){
+    s = s.trim();
+    if (s.charAt(0) !== '"') return { error: "Zeichenkette erwartet" };
+    var out = "", i = 1;
+    while (i < s.length) {
+      var c = s.charAt(i);
+      if (c === '"') {
+        var rest = s.slice(i + 1).trim();
+        if (rest !== "") return { error: "Unerwartetes hinter der Zeichenkette" };
+        return { value: out };
+      }
+      if (c === "\\") {
+        var n = s.charAt(i + 1);
+        if (n === '"' || n === "\\") { out += n; i += 2; continue; }
+        if (n === "n") { out += "\n"; i += 2; continue; }
+        if (n === "t") { out += "\t"; i += 2; continue; }
+        if (n === "u") {
+          var hex = s.substr(i + 2, 4);
+          if (!/^[0-9A-Fa-f]{4}$/.test(hex)) return { error: "Ungueltiges \\u" };
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 6; continue;
+        }
+        return { error: "Unbekannte Escape-Folge \\" + n };
+      }
+      out += c; i++;
+    }
+    return { error: "Zeichenkette nicht geschlossen" };
+  }
+
+  function parseArray(s){
+    s = s.trim();
+    if (s.charAt(0) !== "[" || s.charAt(s.length - 1) !== "]") {
+      return { error: "Liste erwartet, z. B. [\"satzbau\"]" };
+    }
+    var inner = s.slice(1, -1).trim();
+    if (inner === "") return { value: [] };
+    /* Elemente an Kommata AUSSERHALB von Anfuehrungszeichen trennen. */
+    var parts = [], cur = "", inStr = false, esc = false;
+    for (var i = 0; i < inner.length; i++) {
+      var c = inner.charAt(i);
+      if (esc) { cur += c; esc = false; continue; }
+      if (c === "\\" && inStr) { cur += c; esc = true; continue; }
+      if (c === '"') { inStr = !inStr; cur += c; continue; }
+      if (c === "," && !inStr) { parts.push(cur); cur = ""; continue; }
+      cur += c;
+    }
+    parts.push(cur);
+    var out = [];
+    for (var k = 0; k < parts.length; k++) {
+      var r = parseString(parts[k]);
+      if (r.error) return { error: r.error };
+      out.push(r.value);
+    }
+    return { value: out };
+  }
+
+  /* Schneidet einen Kommentar ab - aber nur AUSSERHALB von
+     Anfuehrungszeichen, sonst zerlegte ein # im Wikitext die Zeile. */
+  function stripComment(line){
+    var inStr = false, esc = false;
+    for (var i = 0; i < line.length; i++) {
+      var c = line.charAt(i);
+      if (esc) { esc = false; continue; }
+      if (c === "\\" && inStr) { esc = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (c === "#" && !inStr) return line.slice(0, i);
+    }
+    return line;
+  }
+
+  /* Der Parser. Gibt { list: [...], byKey: {...}, error: "" } zurueck;
+     bei einem Fehler ist list leer und error gefuellt ("Zeile N: ...").
+     Ein leerer Text ist KEIN Fehler - dann gibt es einfach keine
+     Workflows. */
+  function parse(text){
+    var list = [], byKey = {}, cur = null, target = null;
+    var lines = String(text || "").split(/\r\n|\r|\n/);
+    function fail(no, msg){
+      return { list: [], byKey: {}, error: "Zeile " + no + ": " + msg };
+    }
+    for (var no = 1; no <= lines.length; no++) {
+      var line = stripComment(lines[no - 1]).trim();
+      if (line === "") continue;
+      if (line === "[[workflow]]") {
+        cur = { schluessel: "", name: "", name_en: "", felder_aus: [],
+                felder: [], vorbelegung: {}, beispiel: {} };
+        list.push(cur);
+        target = cur;
+        continue;
+      }
+      if (line === "[workflow.vorbelegung]" || line === "[workflow.beispiel]") {
+        if (!cur) return fail(no, "gehoert zu einem [[workflow]]-Block");
+        target = line === "[workflow.vorbelegung]" ? cur.vorbelegung
+                                                   : cur.beispiel;
+        continue;
+      }
+      if (line.charAt(0) === "[") {
+        return fail(no, "unbekannter Abschnitt " + line);
+      }
+      var eq = line.indexOf("=");
+      if (eq < 0) return fail(no, "kein Schluessel = Wert");
+      var key = line.slice(0, eq).trim();
+      var raw = line.slice(eq + 1).trim();
+      if (!cur) return fail(no, "steht vor dem ersten [[workflow]]");
+      if (target === cur) {
+        if (key === "schluessel" || key === "name" || key === "name_en") {
+          var r = parseString(raw);
+          if (r.error) return fail(no, r.error);
+          if (key === "name_en") {
+            cur.name_en = r.value;
+          } else if (key === "schluessel") {
+            if (!/^[A-Za-z0-9_-]+$/.test(r.value)) {
+              return fail(no, "schluessel darf nur A-Z a-z 0-9 _ - enthalten");
+            }
+            /* Ein bereits bekannter Schluessel ist KEIN Fehler mehr: die
+               eigene Datei des Nutzers wird hinter die mitgelieferte
+               gehaengt, und dort soll ihr Block den frueheren ERSETZEN -
+               an dessen Stelle, damit die Reihenfolge stabil bleibt. */
+            var vorher = byKey[r.value];
+            if (vorher) {
+              var pos = list.indexOf(vorher);
+              if (pos >= 0) list[pos] = cur;
+              if (list[list.length - 1] === cur) list.pop();
+            }
+            cur.schluessel = r.value;
+            byKey[r.value] = cur;
+          } else {
+            cur.name = r.value;
+          }
+        } else if (key === "felder") {
+          /* Die Feldliste des Lightroom-Metadatensatzes. Die Seite braucht
+             sie nicht, muss sie aber kennen: sonst wuerde die Datei des
+             Nutzers hier als fehlerhaft gelten. Geprueft wird sie auf der
+             Lightroom-Seite, wo die Feldnamen deklariert sind. */
+          var fa = parseArray(raw);
+          if (fa.error) return fail(no, fa.error);
+          cur.felder = fa.value;
+        } else if (key === "felder_aus") {
+          var a = parseArray(raw);
+          if (a.error) return fail(no, a.error);
+          for (var i = 0; i < a.value.length; i++) {
+            if (FIELDS.indexOf(a.value[i]) < 0) {
+              return fail(no, "unbekanntes Feld \"" + a.value[i] +
+                          "\" (moeglich: " + FIELDS.join(", ") + ")");
+            }
+          }
+          cur.felder_aus = a.value;
+        } else {
+          return fail(no, "unbekannter Schluessel \"" + key + "\"");
+        }
+      } else {
+        var allowed = target === cur.vorbelegung ? PREFILL_KEYS : EXAMPLE_KEYS;
+        if (allowed.indexOf(key) < 0) {
+          return fail(no, "unbekannter Schluessel \"" + key +
+                      "\" (moeglich: " + allowed.join(", ") + ")");
+        }
+        var v = parseString(raw);
+        if (v.error) return fail(no, v.error);
+        target[key] = v.value;
+      }
+    }
+    /* Nachlauf: jeder Block braucht einen Schluessel. */
+    for (var k = 0; k < list.length; k++) {
+      if (!list[k].schluessel) {
+        return fail(lines.length, "ein [[workflow]]-Block hat keinen schluessel");
+      }
+      if (!list[k].name) list[k].name = list[k].name_en || list[k].schluessel;
+      if (!list[k].name_en) list[k].name_en = list[k].name;
+    }
+    return { list: list, byKey: byKey, error: "" };
+  }
+
+  /* Welche Felder ein Workflowwechsel verstecken WUERDE, obwohl sie gefuellt
+     sind - genau die Liste, fuer die einmal nachgefragt wird. satzbau hat
+     keine leerbaren Daten (die Fuegungen sind gelernte Voreinstellungen und
+     werden NIE geleert), deshalb steht es nie in filled. */
+  function fieldsToClear(wf, filled){
+    if (!wf) return [];
+    var out = [];
+    for (var i = 0; i < wf.felder_aus.length; i++) {
+      var f = wf.felder_aus[i];
+      if (filled[f]) out.push(f);
+    }
+    return out;
+  }
+
+  /* Anzeigename nach Oberflaechensprache. Nur Englisch hat eine eigene
+     Spalte; jede andere Sprache bekommt name, weil die Datei vom Nutzer
+     kommt und wir nicht wissen, in welcher Sprache er sie schreibt. */
+  function displayName(wf, lang){
+    if (!wf) return "";
+    return (lang === "en" ? (wf.name_en || wf.name) : (wf.name || wf.name_en))
+           || wf.schluessel;
+  }
+
+  return { FIELDS: FIELDS, parse: parse, parseString: parseString,
+           parseArray: parseArray, fieldsToClear: fieldsToClear,
+           displayName: displayName };
+})();
+
+/* ===========================================================================
    Zusammensetzen von Unterschrift und Beschreibung aus depicts/created_during
 
    Alles hier ist REINE Logik ohne DOM und ohne Netz, damit es ausserhalb des
@@ -897,6 +1320,10 @@ function renderCaptions(){
      sitelinks { Qid: { lang: "Artikeltitel" } }   nur wo ein Artikel existiert
      human     { Qid: true }                       laut P31 = Q5
      conn      { "Qid|lang": "bei der" }           gelernte Fuegung
+     form      { "Qid|lang": "Filmfestspielen" }   gelernte Anzeigeform,
+                                                   flektiert; ersetzt NUR
+                                                   den sichtbaren Text,
+                                                   nie das Linkziel
 --------------------------------------------------------------------------- */
 var COMPOSE = (function(){
 
@@ -934,11 +1361,14 @@ var COMPOSE = (function(){
   /* Aus einem Q-Item entweder ein Interwiki-Link oder der nackte Text.
      Form laut Commons-Layoutleitfaden: [[:de:Artikel|Beschriftung]] - mit
      fuehrendem Doppelpunkt, sonst waere es ein Seitenleisten-Link. */
-  function linked(qid, lang, data, fallback){
-    var text = labelOf(qid, lang, data, fallback);
+  function linked(qid, lang, data, fallback, textOverride){
+    var text = textOverride || labelOf(qid, lang, data, fallback);
     var title = ((data.sitelinks || {})[qid] || {})[lang];
     if (!title) return text;
-    if (title === text) return "[[:" + lang + ":" + title + "]]";
+    /* IMMER die Rohrform, auch wenn Titel und Text gleich sind. Ein
+       Zwischenwiki-Link mit fuehrendem Doppelpunkt zeigt sonst das PRAEFIX
+       mit an - aus [[:de:Sophie Wilde]] wird auf der Seite "de:Sophie
+       Wilde". Nur [[:de:Sophie Wilde|Sophie Wilde]] liest sich richtig. */
     return "[[:" + lang + ":" + title + "|" + text + "]]";
   }
 
@@ -954,6 +1384,16 @@ var COMPOSE = (function(){
 
   /* Baut EINEN Satz. render(qid, fallback) liefert je nach Aufrufer den
      nackten Text (Unterschrift) oder einen Link (Beschreibung). */
+  /* Gelernte Anzeigeform eines Q-Items in einer Sprache, sonst "". Sie traegt
+     die Flexion, die aus Wikidata nicht ableitbar ist: das Linkziel bleibt der
+     Artikeltitel ("Internationale Filmfestspiele von Venedig 2024"), sichtbar
+     wird die gebeugte Form ("Internationalen Filmfestspielen von Venedig
+     2024"). Der Kasus haengt an der Fuegung, und die ist ebenfalls je Item und
+     Sprache gelernt - eine Form je Paar genuegt deshalb. */
+  function formOf(qid, lang, data){
+    return String(((data.form || {})[qid + "|" + lang] || "")).trim();
+  }
+
   function sentence(depicts, event, lang, data, render){
     var parts = split(depicts, data);
     var subjects = parts.persons.length ? parts.persons : parts.things;
@@ -962,9 +1402,13 @@ var COMPOSE = (function(){
     if (!head) return "";
     if (!event) return head;
 
-    var evText = render(event.id, event.label);
     var key = event.id + "|" + lang;
     var fuegung = ((data.conn || {})[key] || "").trim();
+    /* Die Anzeigeform traegt den Kasus, den die Fuegung verlangt. Fehlt die
+       Fuegung, steht die Veranstaltung als Beifuegung hinter einem Komma -
+       dort waere die gebeugte Form falsch, also die Bezeichnung. */
+    var evText = render(event.id, event.label,
+                        fuegung ? formOf(event.id, lang, data) : "");
     /* Ohne gelernte Fuegung die kasusfreie Form. Falsch flektieren waere
        schlimmer als schmucklos. */
     if (!fuegung) return head + ", " + evText;
@@ -972,14 +1416,14 @@ var COMPOSE = (function(){
   }
 
   function caption(depicts, event, lang, data){
-    return sentence(depicts, event, lang, data, function(qid, fallback){
-      return labelOf(qid, lang, data, fallback);
+    return sentence(depicts, event, lang, data, function(qid, fallback, over){
+      return over || labelOf(qid, lang, data, fallback);
     });
   }
 
   function description(depicts, event, lang, data){
-    return sentence(depicts, event, lang, data, function(qid, fallback){
-      return linked(qid, lang, data, fallback);
+    return sentence(depicts, event, lang, data, function(qid, fallback, over){
+      return linked(qid, lang, data, fallback, over);
     });
   }
 
@@ -1018,7 +1462,8 @@ var COMPOSE = (function(){
 
   return {
     BEGIN: BEGIN, END: END, JOIN: JOIN,
-    labelOf: labelOf, langToWiki: langToWiki, joinList: joinList,
+    labelOf: labelOf, formOf: formOf, langToWiki: langToWiki,
+    joinList: joinList,
     linked: linked, caption: caption, description: description,
     block: block, merge: merge
   };
@@ -1093,8 +1538,20 @@ function renderConnectors(){
       state.connectors[key] = inp.value;
       dirty = true;
     });
+    /* Zweites Feld: die gebeugte Anzeigeform. Leer lassen heisst "nimm die
+       Wikidata-Bezeichnung" - fuer Sprachen ohne Flexion bleibt hier nichts
+       zu tun. */
+    var frm = document.createElement("input");
+    frm.type = "text";
+    frm.value = state.forms[key] || "";
+    frm.placeholder = t("formPh");
+    frm.addEventListener("input", function(){
+      state.forms[key] = frm.value;
+      dirty = true;
+    });
     row.appendChild(tag);
     row.appendChild(inp);
+    row.appendChild(frm);
     box.appendChild(row);
   });
 }
@@ -1111,6 +1568,7 @@ function composeAll(){
   setStatus(t("composeBusy"));
   fetchDetails(ids, langs).then(function(){
     DETAILS.conn = state.connectors;
+    DETAILS.form = state.forms;
     state.captions.forEach(function(c){
       var lang = (c.lang || "").trim().toLowerCase();
       if (langs.indexOf(lang) < 0) return;
@@ -1127,23 +1585,48 @@ function composeAll(){
   });
 }
 
+/* Die beiden Ueberschriften trennen das Feld sichtbar in seine zwei Haelften.
+   Sie stehen WIRKLICH im gespeicherten Text, sonst waeren sie im
+   Metadaten-Bedienfeld von Lightroom nicht zu sehen - das zeigt den Wert
+   unveraendert an. Beim Einlesen und beim Hochladen werden sie wieder
+   entfernt; auf Commons haetten sie als Aufzaehlungszeichen nichts zu
+   suchen. Wer eine dieser Zeilen selbst schreibt, verliert sie deshalb. */
+var HEAD_SDC = "# Structured Data";
+var HEAD_WIKI = "# Wikitext";
+
+function isHeading(line){
+  var l = String(line || "").trim();
+  return l === HEAD_SDC || l === HEAD_WIKI;
+}
+
 function buildWikitext(){
-  var parts = [], seen = {};
+  var daten = [], seen = {};
   state.captions.forEach(function(c){
     var l = (c.lang || "").trim().toLowerCase();
     var t = (c.text || "").trim();
     if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && t && !seen[l]) {
       seen[l] = true;
-      parts.push("caption_" + l + "=" + t);
+      daten.push("caption_" + l + "=" + t);
     }
   });
-  state.depicts.forEach(function(e){ parts.push("depicts=" + tokenText(e)); });
+  state.depicts.forEach(function(e){ daten.push("depicts=" + tokenText(e)); });
   if (state.createdDuring) {
-    parts.push("created_during=" + tokenText(state.createdDuring));
+    daten.push("created_during=" + tokenText(state.createdDuring));
   }
-  var ft = (state.freetext || "").trim();
-  if (ft) parts.push(ft);
-  return parts.join("\n");
+
+  /* Der Freitext kann Ueberschriften aus einem frueheren Durchlauf
+     enthalten - sie duerfen sich nicht vermehren. */
+  var ft = String(state.freetext || "").split(/\r\n|\r|\n/)
+    .filter(function(z){ return !isHeading(z); }).join("\n").trim();
+
+  var out = [];
+  if (daten.length) { out.push(HEAD_SDC); out = out.concat(daten); }
+  if (ft) {
+    if (out.length) out.push("");
+    out.push(HEAD_WIKI);
+    out.push(ft);
+  }
+  return out.join("\n");
 }
 
 /* Eine Stelle fuer alles Kopieren. navigator.clipboard gibt es nur im
@@ -1175,6 +1658,14 @@ function renderPreview(){
   pre.innerHTML = "";
   if (!text) { pre.textContent = t("previewEmpty"); return; }
   text.split("\n").forEach(function(line){
+    if (isHeading(line)) {
+      var hh = document.createElement("span");
+      hh.className = "h";
+      hh.textContent = line;
+      pre.appendChild(hh);
+      pre.appendChild(document.createTextNode("\n"));
+      return;
+    }
     var m = line.match(/^([a-z_0-9]+)=(.*)$/);
     if (m) {
       var k = document.createElement("span");
@@ -1200,6 +1691,9 @@ function renderAll(){
   renderDepicts(); renderCreatedDuring(); renderCategories();
   renderCaptions(); renderConnectors(); renderPreview();
   document.getElementById("freetext").value = state.freetext;
+  applyWorkflowView();
+  renderApplyAll();
+  renderWorkflowNote();
 }
 function touch(){
   dirty = true;
@@ -1346,6 +1840,12 @@ function payloadOut(){
     photoKey: PAYLOAD.photoKey || "",
     uiLang: UI,
     connectors: state.connectors,
+    forms: state.forms,
+    workflow: state.workflow,
+    /* Reist mit, damit Lightroom vergleichen kann, ob die Markierung
+       noch dieselbe ist wie beim Ankreuzen. */
+    applyToAll: !!state.applyToAll,
+    photoCount: photoCount(),
     depicts: state.depicts.map(tokenText).join("; "),
     createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
     categories: state.categories.join("; "),
@@ -1367,7 +1867,7 @@ function payloadOut(){
    dazwischen – funktioniert trotzdem, nur ein Klick mehr.
    ----------------------------------------------------------------------- */
 
-var RESULT_FILENAME = "lrmediawiki-sdc-result.json";
+var RESULT_FILENAME = "lrmediawiki2-sdc-result.json";
 
 function triggerDownload(text, filename) {
   var blob = new Blob([text], { type: "application/json" });
@@ -1430,6 +1930,7 @@ function adoptState(p){
   PAYLOAD = p;
   load();
   dirty = false;
+  if (applyWorkflowPrefill()) touch();
   renderAll();
   document.getElementById("donePanel").classList.remove("open");
   document.getElementById("fileName").textContent = PAYLOAD.fileName || "";
@@ -1590,6 +2091,14 @@ function init(){
   sel.value = UI;
   sel.addEventListener("change", function(){ setUiLang(sel.value); });
   applyStrings();
+  renderWorkflowSelect();  /* Beschriftung "(ohne Workflow)" jetzt in UI-Sprache */
+  var wsel = document.getElementById("workflowSel");
+  wsel.addEventListener("change", function(){ onWorkflowPicked(wsel.value); });
+  document.getElementById("applyAll").addEventListener("change", function(){
+    state.applyToAll = this.checked;
+    touch();
+  });
+  if (applyWorkflowPrefill()) touch();
 
   document.getElementById("fileName").textContent = PAYLOAD.fileName || "";
   var n = Number(PAYLOAD.photoCount || 1);

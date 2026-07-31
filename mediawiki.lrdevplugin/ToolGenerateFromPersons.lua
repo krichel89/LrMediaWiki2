@@ -290,7 +290,7 @@ LrFunctionContext.callWithContext('DescriptionFromPersonsDialog',
                     local file = LrDialogs.runSavePanel({
                         title = 'Export Presets as JSON file to..',
                         prompt = 'Save Presets',
-                        fileName = 'LrMediaWiki_PersonPresets_' ..
+                        fileName = 'LrMediaWiki2_PersonPresets_' ..
                             os.date('%y%m%d') .. '.json',
                         requiredFileType = 'json',
                         canCreateDirectories = true

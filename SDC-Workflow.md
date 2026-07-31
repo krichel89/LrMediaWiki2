@@ -4,7 +4,7 @@ Praktische Workflows für verschiedene Foto-Typen mit Structured Data (SDC)-Inte
 
 ---
 
-## 📸 Workflow 1: Porträt bei Film Festival
+## Workflow 1: Porträt bei Film Festival
 
 **Szenario:** Du hast ein Porträt von Isaach de Bankolé beim Cannes Film Festival 2026 fotografiert.
 
@@ -69,7 +69,7 @@ license=Q18199165
 
 ---
 
-## 🎨 Workflow 2: Kunstwerk/Gemälde
+## Workflow 2: Kunstwerk/Gemälde
 
 **Szenario:** Du hast ein Foto eines Gemäldes vom Louvre gemacht (z.B. Leonardos "Mona Lisa").
 
@@ -116,7 +116,7 @@ Falls du das "LrMediaWiki – Artwork" Metadataset nutzt:
 
 ---
 
-## 📚 Workflow 3: Gruppenbild / Event Foto
+## Workflow 3: Gruppenbild / Event Foto
 
 **Szenario:** Ein Foto mehrerer Personen beim Event (z.B. Berlinale 2026).
 
@@ -145,7 +145,7 @@ at the Berlinale 2026
 
 ---
 
-## 🌍 Workflow 4: Landschafts- / Ortsfoto
+## Workflow 4: Landschafts- / Ortsfoto
 
 **Szenario:** Foto eines Ortes, z.B. der Eiffel Tower mit Standort-Koordinaten.
 
@@ -176,7 +176,7 @@ depicts=Q243
 
 ---
 
-## 🏛️ Workflow 5: Museum / Archive Photo
+## Workflow 5: Museum / Archive Photo
 
 **Szenario:** Historisches Foto aus einem Archiv (Public Domain).
 
@@ -203,7 +203,7 @@ depicts=Q...
 
 ---
 
-## ⚡ Quick Reference: Häufige Wikidata Q-IDs
+## Quick Reference: Häufige Wikidata Q-IDs
 
 ### Lizenzen & Copyright
 
@@ -242,7 +242,7 @@ depicts=Q...
 
 ---
 
-## 🔧 Troubleshooting: SDC-Felder funktionieren nicht
+## Troubleshooting: SDC-Felder funktionieren nicht
 
 ### Szenario 1: Nur `caption_en` wird hochgeladen, andere Sprachen nicht
 
@@ -290,7 +290,7 @@ caption_en=Title
 
 ---
 
-## 💡 Pro-Tipps
+## Pro-Tipps
 
 ### 1. Template für eigene Workflows
 
@@ -322,7 +322,7 @@ javascript:window.open('https://www.wikidata.org/w/api.php?action=query&titles='
 
 ---
 
-## 📖 Weiterführende Docs
+## Weiterführende Docs
 
 - **[Installation.md](./Installation.md)** – Setup & Konfiguration
 - **[Refactoring-Details.md](./Refactoring-Details.md)** – Technische Architektur

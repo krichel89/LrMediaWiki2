@@ -271,6 +271,36 @@ echo "=============================================================="
 reihe test_compose_js.js node
 
 echo
+echo "=============================================================="
+echo " 7c. Workflows: TOML-Parser der Seite + mitgelieferte Vorlage"
+echo "=============================================================="
+reihe test_workflows_js.js node
+
+echo
+echo "=============================================================="
+echo " 7d. Schreibbereich (applyScope), Ausschnitt frisch aus der Quelle"
+echo "=============================================================="
+reihe test_scope_lua.lua "$LUA51"
+
+echo
+echo "=============================================================="
+echo " 7e. Workflow-Leser der Lightroom-Seite (MediaWikiWorkflows)"
+echo "=============================================================="
+reihe test_workflows_lua.lua "$LUA51"
+
+echo
+echo "=============================================================="
+echo " 7f. Rohdatenfeld: Trennueberschriften beim Einlesen"
+echo "=============================================================="
+reihe test_rawmeta_lua.lua "$LUA51"
+
+echo
+echo "=============================================================="
+echo " 7g. Beschriftungen: kein Feld heisst mehr Wikitext"
+echo "=============================================================="
+reihe test_labels_lua.lua "$LUA51"
+
+echo
 HOSTBIN="${TMPDIR:-/tmp}/sdcbridge-host"
 echo "=============================================================="
 echo " 8. Hintergrund-App: go vet und Bau aller Zielplattformen"

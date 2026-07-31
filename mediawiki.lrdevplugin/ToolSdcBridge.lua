@@ -19,7 +19,7 @@ local LrTasks = import 'LrTasks'
 
 local MediaWikiSdcBridge = require 'MediaWikiSdcBridge'
 
-local TITLE = 'LrMediaWiki – Hintergrund-App'
+local TITLE = 'LrMediaWiki2 – Hintergrund-App'
 
 -- Die beiden Zustaende sind VERSCHIEDENE Dinge, und genau daran ist der alte
 -- Text gescheitert ("Zustand: eingeschaltet" direkt neben "Laeuft gerade

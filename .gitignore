@@ -25,3 +25,6 @@ bridge/*.test
 # Auslieferungspakete. packe.sh legt beide in dist/ ab.
 dist/
 LrMediaWiki2-*.zip
+
+# Eigene Workflow-Anpassungen des Nutzers – gehoeren niemandem sonst
+mediawiki.lrdevplugin/workflows-eigene.toml

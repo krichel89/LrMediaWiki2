@@ -10,4 +10,4 @@
 }}
 ${templates}
 ${license}
-${categories}[[Category:Uploaded with LrMediaWiki]]
+${categories}

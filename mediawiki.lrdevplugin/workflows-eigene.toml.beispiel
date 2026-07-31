@@ -1,0 +1,33 @@
+# Eigene Workflow-Anpassungen / your own workflow adjustments.
+#
+# Diese Datei als "workflows-eigene.toml" in den EINSTELLUNGSORDNER legen,
+# NICHT in den Zusatzmodul-Ordner - der wird bei jedem Update ersetzt.
+# Den genauen Pfad zeigt der Editor unter seiner Kopfzeile an; er lautet
+#   macOS   ~/Library/Application Support/Adobe/Lightroom/LrMediaWiki2/
+#   Windows %APPDATA%\Adobe\Lightroom\LrMediaWiki2\
+#
+# Copy this file to the settings folder as "workflows-eigene.toml", NOT into
+# the plug-in folder - that one is replaced by every update. The editor shows
+# the exact path under its header.
+#
+# Ein Block mit einem schluessel aus workflows.toml ERSETZT diesen an seiner
+# Stelle; ein neuer schluessel kommt hinten dazu.
+
+# Beispiel: den mitgelieferten Workflow "artwork" umbenennen und den
+# Satzbau-Abschnitt doch einblenden.
+#
+# [[workflow]]
+# schluessel = "artwork"
+# name = "Kunstwerk"
+# name_en = "Artwork"
+# felder_aus = []
+# felder = ["artist", "title", "caption_en", "description_all", "depicts", "categories"]
+
+# Beispiel: ein eigener Workflow.
+#
+# [[workflow]]
+# schluessel = "presse"
+# name = "Presse"
+# name_en = "Press"
+# felder_aus = ["veranstaltung"]
+# felder = ["caption_en", "description_de", "description_all", "depicts", "categories", "source"]

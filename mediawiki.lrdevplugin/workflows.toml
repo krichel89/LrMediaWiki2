@@ -1,0 +1,91 @@
+# Workflows for the SDC editor of LrMediaWiki2.
+# Workflows fuer den SDC-Editor von LrMediaWiki2.
+#
+# CAREFUL: this file SHIPS WITH THE PLUG-IN and is replaced by every update.
+# Put your own changes in workflows-eigene.toml in the SETTINGS folder - the
+# editor shows the exact path under its header. That folder survives updates.
+#
+# ACHTUNG: diese Datei wird MITGELIEFERT und bei jedem Update ersetzt.
+# Eigene Aenderungen gehoeren in workflows-eigene.toml im EINSTELLUNGSORDNER
+# (der Editor zeigt den Pfad unter seiner Kopfzeile) - der ueberlebt Updates.
+#
+# Ein Block mit einem schluessel, den es hier schon gibt, ERSETZT diesen.
+# Ein neuer schluessel kommt dazu.
+# A block whose schluessel already exists here REPLACES it; a new one is added.
+#
+# Aenderungen wirken beim naechsten Oeffnen des Editors; laeuft die
+# Hintergrund-App, genuegt ein Fotowechsel in Lightroom.
+#
+# Each workflow is one [[workflow]] block / Jeder Workflow ist ein Block:
+#   schluessel   unique name, A-Z a-z 0-9 _ - only   (eindeutiger Name)
+#   name         shown in the dropdown, German       (Anzeigename deutsch)
+#   name_en      shown in the dropdown, English      (Anzeigename englisch)
+#   felder_aus   HIDDEN sections in the EDITOR / im EDITOR ausgeblendete
+#                Abschnitte. Possible: depicts, kategorien, veranstaltung,
+#                unterschriften, satzbau, wikitext
+#   felder       fields of the matching METADATA SET in Lightroom, in order.
+#                Felder des zugehoerigen METADATENSATZES in Lightroom, in
+#                dieser Reihenfolge. Der Lightroom-Block (Dateiname, Titel,
+#                Aufnahmedatum, Ort ...) haengt immer von selbst darunter.
+#                Ein unbekannter Feldname wird uebersprungen, nicht gemeldet
+#                als Fehler.
+#   [workflow.vorbelegung]  fills EMPTY fields only / fuellt NUR LEERE Felder:
+#                depicts       "Q123 # label; Q456 # label"
+#                veranstaltung "Q123 # label"
+#                kategorien    "Category A; Category B"
+#                wikitext      "any wikitext / beliebiger Wikitext"
+#   [workflow.beispiel]     grey example text only, never saved.
+#                           nur grauer Beispieltext, wird nie gespeichert.
+#                Possible / moeglich: wikitext
+#
+# No workflow selected = everything visible, nothing prefilled.
+# Kein Workflow ausgewaehlt = alles sichtbar, nichts vorbelegt.
+#
+# The first four names are the metadata sets of LrMediaWiki 1.x,
+# so anyone coming from there recognises them. Two are new.
+# Die ersten vier Namen sind die Metadatensaetze von LrMediaWiki 1.x
+# – wer von dort kommt, erkennt sie wieder. Zwei sind neu.
+
+[[workflow]]
+schluessel = "information"
+name = "Information"
+name_en = "Information"
+felder_aus = []
+felder = ["caption_en", "description_en", "depicts", "created_during", "categories", "source", "author", "date", "description_all"]
+
+[[workflow]]
+schluessel = "information-de"
+name = "Information (de)"
+name_en = "Information (de)"
+felder_aus = []
+felder = ["caption_en", "description_de", "depicts", "created_during", "categories", "source", "author", "date", "description_all"]
+
+[[workflow]]
+schluessel = "artwork"
+name = "Artwork"
+name_en = "Artwork"
+felder_aus = ["satzbau"]
+felder = ["artist", "author", "title", "caption_en", "description_en", "description_de", "description_other", "date", "medium", "dimensions", "institution", "department", "accessionNumber", "placeOfCreation", "placeOfDiscovery", "objectHistory", "exhibitionHistory", "creditLine", "inscriptions", "notes", "references", "source", "otherVersions", "otherFields", "wikidata", "templates", "depicts", "categories", "description_all"]
+
+[[workflow]]
+schluessel = "object-photo"
+name = "Object Photo"
+name_en = "Object Photo"
+felder_aus = ["veranstaltung", "satzbau"]
+felder = ["object", "detail", "detailPosition", "caption_en", "description_en", "description_de", "description_other", "date", "author", "source", "otherVersions", "otherFields", "templates", "depicts", "categories", "description_all"]
+
+[[workflow]]
+schluessel = "events-portraits"
+name = "Events/Portraits"
+name_en = "Events/Portraits"
+felder_aus = []
+felder = ["caption_en", "description_en", "description_de", "depicts", "created_during", "categories", "source", "author", "date", "description_all"]
+
+[[workflow]]
+schluessel = "landscapes-monuments"
+name = "Landscapes/Monuments"
+name_en = "Landscapes/Monuments"
+felder_aus = ["satzbau"]
+felder = ["caption_en", "description_en", "description_de", "depicts", "categories", "source", "author", "date", "templates", "description_all"]
+[workflow.beispiel]
+wikitext = "{{Location}} wird bei GPS-Daten automatisch vorangestellt."

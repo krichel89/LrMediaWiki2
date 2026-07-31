@@ -259,8 +259,8 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 	if frage "Release jetzt anlegen?"; then
 		gh release create "$TAG" --repo "$GHREPO" \
 			--title "LrMediaWiki2 $VERSION" --notes-file "$NOTIZ" \
-			"$NUTZER#Zusatzmodul zum Installieren" \
-			"$VOLL#Alles inklusive Quelltext"
+			"$NUTZER#LrMediaWiki2-$VERSION.zip" \
+			"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
 		gut "Release angelegt"
 	fi
 elif [ "$DRYRUN" = 0 ]; then

@@ -2,7 +2,7 @@
 -- of the MIT license (see LICENSE.txt file in the project root directory).
 --
 -- This Metadata Set "LrMediaWiki – Wikitext" is the dedicated view
--- for the all-in-one wikitext field "Wikitext" – deliberately the
+-- for the all-in-one wikitext field "Raw Metadata" – deliberately the
 -- ONLY field here: captions, depicts etc. are contained in the wikitext or
 -- edited elsewhere; content is typically prepared in an external editor or
 -- another tool and pasted in. The per-language single-line fields live in the
@@ -18,10 +18,10 @@ local Info = require 'Info'
 local pf = Info.LrToolkitIdentifier .. '.' -- Prefix, e.g. 'org.ireas.lightroom.mediawiki.'
 
 return {
-	id = 'LrMediaWikiMetadataSetDescriptionAll', -- needs to be unique!
-	title = 'LrMediaWiki – Wikitext', -- no localization needed
+	id = 'LrMediaWiki2MetadataSetDescriptionAll', -- needs to be unique!
+	title = 'LrMediaWiki2 – Raw Metadata', -- no localization needed
 	items = {
-		{ 'com.adobe.label', label = 'LrMediaWiki – Wikitext' },
-		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Wikitext", height_in_lines = 25 },
+		{ 'com.adobe.label', label = 'LrMediaWiki2 – Raw Metadata' },
+		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Raw Metadata", height_in_lines = 25 },
 	},
 }

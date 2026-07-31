@@ -97,7 +97,7 @@ end
 local macArch = nil
 local function detectMacArch()
 	if macArch ~= nil then return macArch end
-	local out = LrPathUtils.child(tempDir(), 'lrmediawiki-sdc-arch.txt')
+	local out = LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-arch.txt')
 	LrTasks.execute('/usr/bin/uname -m > "' .. out .. '" 2>/dev/null')
 	-- Bewusst mit io.* statt mit readFile(): readFile wird weiter unten in
 	-- dieser Datei definiert und waere hier oben noch nicht sichtbar. Ein
@@ -142,15 +142,15 @@ local function binaryCandidates()
 end
 
 local function portFilePath()
-	return LrPathUtils.child(tempDir(), 'lrmediawiki-sdc-bridge-port.json')
+	return LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-bridge-port.json')
 end
 
 local function pagePath()
-	return LrPathUtils.child(tempDir(), 'lrmediawiki-sdc-editor.html')
+	return LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-editor.html')
 end
 
 function MediaWikiSdcBridge.bridgeLogPath()
-	return LrPathUtils.child(tempDir(), 'lrmediawiki-sdc-bridge.log')
+	return LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-bridge.log')
 end
 
 --------------------------------------------------------------------------------
@@ -280,7 +280,7 @@ local function launch(bin, token, page, portFile, logFile)
 		.. ' --idle=' .. IDLE_TIMEOUT
 
 	if WIN_ENV == true then
-		local batPath = LrPathUtils.child(tempDir(), 'lrmediawiki-sdc-bridge-start.bat')
+		local batPath = LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-bridge-start.bat')
 		local bat = '@echo off\r\n'
 			.. 'start "" /B "' .. bin .. '"' .. args .. '\r\n'
 		local ok, err = writeFile(batPath, bat)
@@ -420,11 +420,40 @@ local function applyIncoming(catalog, result, currentPhoto, currentKey)
 
 	if not currentPhoto then return end
 
-	MediaWikiSdcData.applyResult(catalog, currentPhoto, result)
-	MediaWikiUtils.trace('SDC bridge: result applied')
+	-- Auf die ganze Markierung schreiben? Die Liste wird JETZT frisch geholt,
+	-- nicht die aus dem Payload benutzt - und nur uebernommen, wenn sie noch
+	-- genauso gross ist wie beim Ankreuzen. getTargetPhotos pausiert.
+	local targets = catalog:getTargetPhotos()
+	local nowCount = targets and #targets or 1
+	local scope = MediaWikiSdcData.applyScope(
+		result.applyToAll, result.photoCount, nowCount)
 
 	local LrDialogs = import 'LrDialogs'
-	LrDialogs.showBezel('SDC übernommen: ' .. MediaWikiSdcData.describeResult(result), 2)
+	if scope == 'mismatch' then
+		MediaWikiUtils.trace('SDC bridge: selection changed ('
+			.. tostring(result.photoCount) .. ' -> ' .. tostring(nowCount)
+			.. ') – not applied')
+		LrDialogs.message('LrMediaWiki – SDC-Brücke',
+			'Beim Öffnen des Editors waren ' .. tostring(result.photoCount)
+			.. ' Fotos markiert, jetzt sind es ' .. tostring(nowCount)
+			.. '. Es wurde nichts geändert.\n\n'
+			.. 'Bitte die Markierung wiederherstellen und noch einmal '
+			.. 'speichern – oder den Haken „auf alle markierten“ entfernen.',
+			'warning')
+		return
+	end
+
+	local written = MediaWikiSdcData.applyResult(catalog,
+		scope == 'all' and targets or currentPhoto, result)
+	MediaWikiUtils.trace('SDC bridge: result applied to '
+		.. tostring(written) .. ' photo(s)')
+
+	local text = 'SDC übernommen: ' .. MediaWikiSdcData.describeResult(result)
+	if written and written > 1 then
+		text = 'SDC auf ' .. tostring(written) .. ' Fotos übernommen: '
+			.. MediaWikiSdcData.describeResult(result)
+	end
+	LrDialogs.showBezel(text, 2)
 end
 
 -- The permanent loop. Runs until MediaWikiSdcBridge.running goes false.
@@ -432,6 +461,7 @@ end
 function MediaWikiSdcBridge.loop()
 	local catalog = LrApplication.activeCatalog()
 	local lastKey = ''
+	local lastCount = -1
 	local currentPhoto = nil
 	local failures = 0
 
@@ -447,16 +477,21 @@ function MediaWikiSdcBridge.loop()
 		local photo = catalog:getTargetPhoto()
 		local key = MediaWikiSdcData.photoKey(photo)
 
+		-- Auch die ANZAHL beobachten: wird die Markierung erweitert, ohne dass
+		-- sich das aktive Foto aendert, muss die Seite das erfahren - sonst
+		-- steht dort eine veraltete Zahl neben dem Haken.
+		local targets = catalog:getTargetPhotos()
+		local count = targets and #targets or 1
+
 		local statePart = 'null'
-		if photo and key ~= lastKey then
-			local targets = catalog:getTargetPhotos()
-			local count = targets and #targets or 1
+		if photo and (key ~= lastKey or count ~= lastCount) then
 			-- collectPayload pauses (catalog reads) – no pcall.
 			local payload = MediaWikiSdcData.collectPayload(photo, count)
 			local text = encode(payload)
 			if text then
 				statePart = text
 				lastKey = key
+				lastCount = count
 				currentPhoto = photo
 				MediaWikiUtils.trace('SDC bridge: pushing ' .. tostring(payload.fileName))
 			end

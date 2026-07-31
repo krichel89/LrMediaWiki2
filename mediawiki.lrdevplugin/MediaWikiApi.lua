@@ -23,9 +23,9 @@ local Info = require 'Info'
 local MediaWikiUtils = require 'MediaWikiUtils'
 
 local MediaWikiApi = {
-	userAgent = string.format('LrMediaWiki %d.%d', Info.VERSION.major, Info.VERSION.minor),
+	userAgent = string.format('LrMediaWiki2 %d.%d', Info.VERSION.major, Info.VERSION.minor),
 	apiPath = nil,
-	githubApiVersion = 'https://api.github.com/repos/Hasenlaeufer/LrMediaWiki/releases',
+	githubApiVersion = 'https://api.github.com/repos/krichel89/LrMediaWiki2/releases',
 	cachedEditToken = nil, -- cached CSRF token to avoid repeated token requests
 	-- OAuth 2.0 bearer token for the current session. nil = classic
 	-- username/password login. Set by MediaWikiInterface.prepareUpload.

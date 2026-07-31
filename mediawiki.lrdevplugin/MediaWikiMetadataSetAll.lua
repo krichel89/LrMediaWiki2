@@ -28,7 +28,7 @@ local Info = require 'Info'
 local pf = Info.LrToolkitIdentifier .. '.' -- Prefix, e.g. 'org.ireas.lightroom.mediawiki.'
 
 return {
-	id = 'LrMediaWikiMetadataSetAll', -- needs to be unique!
+	id = 'LrMediaWiki2MetadataSetAll', -- needs to be unique!
 	title = LOC "$$$/LrMediaWiki/MetadataSetAll=LrMediaWiki – All Fields",
 	items = {
 		{ 'com.adobe.label', label = 'Lightroom' },
@@ -38,12 +38,12 @@ return {
 		'com.adobe.title',
 		'com.adobe.sidecar',
 		'com.adobe.separator',
-		{ 'com.adobe.label', label = 'LrMediaWiki' },
+		{ 'com.adobe.label', label = 'LrMediaWiki2' },
 		-- first group
 		{ pf .. 'caption_en', label = LOC "$$$/LrMediaWiki/Metadata/FileCaptionEn=Caption (en)" },
 		{ pf .. 'description_en', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionEnLabel=Description (en)", height_in_lines = 3 },
 		{ pf .. 'description_de', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionDeLabel=Description (de)", height_in_lines = 3 },
-		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Wikitext", height_in_lines = 10 },
+		{ pf .. 'description_all', label = LOC "$$$/LrMediaWiki/Metadata/DescriptionAll=Raw Metadata", height_in_lines = 10 },
 		{ pf .. 'depicts', label = LOC "$$$/LrMediaWiki/Metadata/Depicts=Depicts (P180)" },
 		{ pf .. 'created_during', label = LOC "$$$/LrMediaWiki/Metadata/CreatedDuring=Created during (P10408)" },
 		{ pf .. 'categories', label = LOC "$$$/LrMediaWiki/Metadata/Categories=Categories" },

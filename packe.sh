@@ -93,5 +93,20 @@ if grep -q 'sdcbridge.go' /tmp/packe-inhalt.$$; then
 	echo "FEHLER: Go-Quelltext im Nutzerpaket - das sollte nur im Vollpaket sein." >&2
 	rm -f /tmp/packe-inhalt.$$; exit 1
 fi
+# Die mitgelieferte Workflow-Datei MUSS dabei sein - ohne sie hat der Nutzer
+# nach der Installation keine Workflows.
+if grep -qE 'workflows\.toml$' /tmp/packe-inhalt.$$; then
+	echo "  ok  Nutzerpaket: workflows.toml enthalten"
+else
+	echo "FEHLER: workflows.toml fehlt im Nutzerpaket." >&2
+	rm -f /tmp/packe-inhalt.$$; exit 1
+fi
+# Die eigene Datei des Nutzers darf NIEMALS mitgeliefert werden - sie wuerde
+# beim Auspacken seine Anpassungen ueberschreiben.
+# Genau der Dateiname, nicht die Beispieldatei daneben (…​.toml.beispiel).
+if grep -qE 'workflows-eigene\.toml$' /tmp/packe-inhalt.$$; then
+	echo "FEHLER: workflows-eigene.toml im Paket - die gehoert dem Nutzer." >&2
+	rm -f /tmp/packe-inhalt.$$; exit 1
+fi
 rm -f /tmp/packe-inhalt.$$
 echo "  ok  Nutzerpaket ohne Entwicklerdateien"

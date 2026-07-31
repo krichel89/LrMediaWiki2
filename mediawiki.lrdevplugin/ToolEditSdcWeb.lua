@@ -14,7 +14,7 @@
 --
 -- 2. THE FILE FALLBACK, unchanged since 2.0.31. The page is written to the
 --    temp folder and opened as file://; saving triggers a download of
---    lrmediawiki-sdc-result.json, and a background watcher picks that file
+--    lrmediawiki2-sdc-result.json, and a background watcher picks that file
 --    up. No ports, no fetch, no firewall rules - it works everywhere, it
 --    just cannot follow the selection.
 --
@@ -45,7 +45,7 @@ local json = require 'JSON'
 
 -- The file the browser page downloads and the watcher looks for. Must match
 -- the RESULT_FILENAME constant in sdc-editor.html exactly.
-local RESULT_FILENAME = 'lrmediawiki-sdc-result.json'
+local RESULT_FILENAME = 'lrmediawiki2-sdc-result.json'
 
 -- How often the watcher checks (seconds).
 local POLL_SECONDS = 2
@@ -55,7 +55,7 @@ local POLL_SECONDS = 2
 -- closed without saving).
 local MAX_WAIT = 14400
 
-local TITLE = 'LrMediaWiki – SDC im Browser'
+local TITLE = 'LrMediaWiki2 – SDC im Browser'
 
 --------------------------------------------------------------------------------
 -- Downloads folder (file fallback only)
@@ -83,7 +83,7 @@ local function editorPagePath()
 	local dir
 	pcall(function() dir = LrPathUtils.getStandardFilePath('temp') end)
 	if not dir then dir = LrPathUtils.getStandardFilePath('desktop') end
-	return LrPathUtils.child(dir, 'lrmediawiki-sdc-editor.html')
+	return LrPathUtils.child(dir, 'lrmediawiki2-sdc-editor.html')
 end
 
 --------------------------------------------------------------------------------
@@ -185,10 +185,30 @@ local function runFileRoute(catalog, photo, photoCount)
 					break
 				end
 
-				MediaWikiSdcData.applyResult(catalog, photo, result)
-				MediaWikiUtils.trace('SDC web editor: applied from downloaded file')
+				local targets = catalog:getTargetPhotos()
+				local nowCount = targets and #targets or 1
+				local scope = MediaWikiSdcData.applyScope(
+					result.applyToAll, result.photoCount, nowCount)
+				if scope == 'mismatch' then
+					MediaWikiUtils.trace('SDC web editor: selection changed ('
+						.. tostring(result.photoCount) .. ' -> '
+						.. tostring(nowCount) .. ') – not applied')
+					LrDialogs.message(TITLE,
+						'Beim Öffnen des Editors waren '
+						.. tostring(result.photoCount) .. ' Fotos markiert, '
+						.. 'jetzt sind es ' .. tostring(nowCount)
+						.. '. Es wurde nichts geändert.', 'warning')
+					break
+				end
+				local written = MediaWikiSdcData.applyResult(catalog,
+					scope == 'all' and targets or photo, result)
+				MediaWikiUtils.trace('SDC web editor: applied to '
+					.. tostring(written) .. ' photo(s) from downloaded file')
+				local wo = written and written > 1
+					and ('Auf ' .. tostring(written) .. ' Fotos übernommen: ')
+					or 'Übernommen: '
 				LrDialogs.message(TITLE,
-					'Übernommen: ' .. MediaWikiSdcData.describeResult(result), 'info')
+					wo .. MediaWikiSdcData.describeResult(result), 'info')
 				break
 			end
 		end

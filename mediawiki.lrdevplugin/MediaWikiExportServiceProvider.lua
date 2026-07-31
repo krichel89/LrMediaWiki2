@@ -109,12 +109,24 @@ local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
 		exportFields.caption_en = captionEn
 	end
 
-	-- NOTE: "Other fields" is a batch-level field of the export dialog only
-	-- (exportFields.other_fields, set in fillFieldsByFile from propertyTable).
-	-- There is deliberately NO per-file override here: this fork does not
-	-- declare an 'otherFields' metadata field, and reading an undeclared
-	-- property raises "Attempt to access property ... not declared in
-	-- Info.lua" and aborts the export.
+	-- Per-file overrides for the fields that came back in 2.0.57. The export
+	-- dialog keeps supplying the default for the whole batch; a value in the
+	-- Metadata panel of a single photo wins over it. That is the behaviour of
+	-- the original plug-in, and the reason these fields exist again: an
+	-- artwork needs its own source, author and date, a press photo does not.
+	-- Reading them is safe again because MediaWikiMetadataProvider declares
+	-- them; before 2.0.57 it did not, and an undeclared read aborts the
+	-- export with "Attempt to access property ... not declared in Info.lua".
+	local function perFile(fieldId, batchKey)
+		local value = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, fieldId)
+		if MediaWikiUtils.isStringFilled(value) then
+			exportFields[batchKey] = value
+		end
+	end
+	perFile('source', 'info_source')
+	perFile('author', 'info_author')
+	perFile('templates', 'info_templates')
+	perFile('otherFields', 'other_fields')
 
 	-- Field "description_all" – single freetext Wikitext field
 	local descriptionAll = photo:getPropertyForPlugin(Info.LrToolkitIdentifier, 'description_all') or ''
@@ -1346,13 +1358,13 @@ MediaWikiExportServiceProvider.sectionsForTopOfDialog = function(viewFactory, pr
 					title = LOC "$$$/LrMediaWiki/Section/StructuredData/Creator=Creator (P170)" .. ':',
 					alignment = labelAlignment,
 					width = LrView.share 'label_width',
-					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Wikitext” overrides this value.",
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Raw Metadata” overrides this value.",
 				},
 				viewFactory:edit_field {
 					value = bind 'sdc_creator',
 					immediate = true,
 					fill_horizontal = 1,
-					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Wikitext” overrides this value.",
+					tooltip = LOC "$$$/LrMediaWiki/Section/StructuredData/CreatorTooltip=Creator (P170)^n^nWikidata QID of the author or photographer, e.g. Q640. Applies to every file in this export. A per-file creator= line in “Raw Metadata” overrides this value.",
 				},
 			},
 			viewFactory:row {

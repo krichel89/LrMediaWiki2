@@ -5,13 +5,13 @@
 --
 --   Direction A ("fields → all"):
 --     The single-line fields "Description (en)" / "Description (de)" are
---     wrapped as {{en|1=…}} / {{de|1=…}}, prepended to "Wikitext",
+--     wrapped as {{en|1=…}} / {{de|1=…}}, prepended to "Raw Metadata",
 --     and the single-line fields are cleared (move semantics).
 --
 --   Direction B ("all → fields"):
 --     Top-level {{en|…}} / {{de|…}} blocks are extracted from
---     "Wikitext" into the single-line fields and removed from the
---     wikitext; everything else stays in "Wikitext".
+--     "Raw Metadata" into the single-line fields and removed from the
+--     wikitext; everything else stays in "Raw Metadata".
 --
 -- Conflict rule (both directions): if the target already holds a DIFFERENT
 -- value, that photo/language is skipped and counted as a conflict – nothing
@@ -211,7 +211,7 @@ LrFunctionContext.callWithContext('LrMediaWikiConvertDescriptionAll', function(c
 	}
 
 	local action = LrDialogs.presentModalDialog {
-		title = 'LrMediaWiki – Beschreibung konvertieren',
+		title = 'LrMediaWiki2 – Beschreibung konvertieren',
 		contents = contents,
 		actionVerb = 'Konvertieren',
 	}
@@ -247,6 +247,6 @@ LrFunctionContext.callWithContext('LrMediaWikiConvertDescriptionAll', function(c
 			msg = msg .. '\n' .. tostring(conflictCount)
 				.. ' Konflikt(e) übersprungen (Ziel war bereits anders belegt).'
 		end
-		LrDialogs.message('LrMediaWiki – Beschreibung konvertieren', msg, 'info')
+		LrDialogs.message('LrMediaWiki2 – Beschreibung konvertieren', msg, 'info')
 	end)
 end)

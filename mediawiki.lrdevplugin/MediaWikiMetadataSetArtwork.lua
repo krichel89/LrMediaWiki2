@@ -22,10 +22,10 @@ local Info = require 'Info'
 local pf = Info.LrToolkitIdentifier .. '.' -- Prefix, e.g. 'org.ireas.lightroom.mediawiki.'
 
 return {
-	id = 'LrMediaWikiMetadataSetArtwork', -- needs to be unique!
-	title = 'LrMediaWiki – Artwork',
+	id = 'LrMediaWiki2MetadataSetArtwork', -- needs to be unique!
+	title = 'LrMediaWiki2 – Artwork',
 	items = {
-		{ 'com.adobe.label', label = 'LrMediaWiki – Artwork' },
+		{ 'com.adobe.label', label = 'LrMediaWiki2 – Artwork' },
 		{ pf .. 'artist', label = LOC "$$$/LrMediaWiki/Metadata/Artist=Artist" },
 		{ pf .. 'author', label = LOC "$$$/LrMediaWiki/Metadata/Author=Author" },
 		{ pf .. 'title', label = LOC "$$$/LrMediaWiki/Metadata/Title=Title" },

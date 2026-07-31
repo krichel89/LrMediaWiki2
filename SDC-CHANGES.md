@@ -1,5 +1,255 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.61 (July 2026)
+
+**The user's own workflow file lives in the settings folder now**, not in the
+plug-in folder: `<appData>/LrMediaWiki2/workflows-eigene.toml`, which is
+`~/Library/Application Support/Adobe/Lightroom/LrMediaWiki2/` on macOS and
+`%APPDATA%\Adobe\Lightroom\LrMediaWiki2\` on Windows. That folder survives
+updates, so the mirroring introduced in 2.0.60 is gone again - it existed only
+to work around the plug-in folder being wiped.
+
+A file left at any of the three earlier locations is adopted once, in order:
+the plug-in folder (2.0.60), the 2.0.60 mirror, and `~/LrMediaWiki2/
+workflows.toml` (up to 2.0.59). The editor's path line now shows the USER
+file - that is the one to edit - so the resolved path is always visible.
+
+**No field is called "Wikitext" any more.** The metadata provider still gave
+`description_all` that title, so the Metadata panel showed it whatever the
+tagsets said; it is "Raw Metadata" now, as is the preview hint in the editor
+and the tooltip of its copy button. Field titles are read fresh by Lightroom,
+so no version bump was needed and no values are at risk. "Description (en)"
+and "Description (de)" keep their labels, but the explanations attached to
+them no longer point at a field called "Wikitext".
+
+The German translation file had its own copy of the label, and a translation
+wins over the default in the LOC string - renaming it in the provider alone
+would have looked done and changed nothing on a German Lightroom. New check
+stage 7g watches all of it: no visible field name "Wikitext", no explanation
+referring to one, and the new label really present in the translation too.
+
+**Raw Metadata is the last field of every metadata set.** The tagset builder
+takes it out of wherever the file lists it and appends it, so it always sits
+below the individual fields whose raw form it is.
+
+## Version 2.0.60 (July 2026)
+
+**The workflow file ships with the plug-in.** `workflows.toml` now lives in
+the plug-in folder and is part of the package, so a fresh installation has the
+six workflows immediately - no file to copy first. It is replaced by every
+update, and it says so in its own header.
+
+**Own changes go in `workflows-eigene.toml`**, in the same folder, never
+shipped. A block whose `schluessel` already exists replaces the shipped one at
+its position; a new key is appended. Both readers get this for free: the two
+files are simply concatenated, and a repeated `schluessel` now replaces the
+earlier block instead of being an error.
+
+Since the plug-in folder is wiped by every update, the user file is mirrored
+to `~/LrMediaWiki2/workflows-eigene.toml` after each successful read, and
+restored from there when it is missing in the plug-in folder. An update
+therefore cannot lose it. A file left over from 2.0.59 at
+`~/LrMediaWiki2/workflows.toml` is adopted once as the user file, so edits
+made there are not silently ignored.
+
+`packe.sh` now fails if the shipped file is missing from the package, or if
+the user file ever ends up in it.
+
+`workflows-eigene.toml.beispiel` is included as a commented starting point.
+
+## Version 2.0.59 (July 2026)
+
+**The `description_all` field is now split by two headings**, `# Structured
+Data` and `# Wikitext`. They are written into the stored value, because
+Lightroom's Metadata panel shows that value verbatim and nothing else would be
+visible there. The editor preview shows the same two headings, highlighted.
+
+Both are removed again on the way in and on the way out: the payload parser
+drops them, so they cannot multiply with each round trip, and the export drops
+them, because "# ..." would be a list bullet in the file description on
+Commons. A user who writes one of these two lines by hand loses it.
+
+**The metadata set formerly called "Wikitext" is now "Raw Metadata"**, and so
+is the field label - the field holds the key=value lines for structured data
+as well as the free wikitext, so the old name understated it.
+
+**The six workflows carry the metadata set names of LrMediaWiki 1.x**:
+Information, Information (de), Artwork, Object Photo - so anyone coming from
+there recognises them - plus the two new ones, Events/Portraits and
+Landscapes/Monuments. Their field lists come from the 1.x sets, extended with
+Raw Metadata and the structured-data fields.
+
+New check stage 7f asserts the heading handling against the parser cut fresh
+from the source.
+
+## Version 2.0.58 (July 2026)
+
+**The plug-in calls itself LrMediaWiki2 everywhere it is visible.** Metadata
+panel section header, all metadata set titles and labels, the window titles of
+the three tools, the user agent sent to the API, the preset file name, and the
+temporary and download file names (`lrmediawiki2-sdc-*`). The Go helper takes
+every path as a command line flag, so renaming those was a Lua-side change
+only - but a bridge still running from an older version writes the old port
+file and will simply be replaced by a new one.
+
+Two real faults surfaced while going through this:
+
+The update check pointed at the release feed of the ORIGINAL plug-in
+(Hasenlaeufer/LrMediaWiki). It would have advised updating from 2.0.57 to
+1.8.0. It now points at krichel89/LrMediaWiki2.
+
+Three description templates contained a hard-coded
+`[[Category:Uploaded with LrMediaWiki]]` while `trackingCategory` adds
+`Uploaded with LrMediaWiki2` on top - so every uploaded file was landing in
+BOTH categories. The hard-coded line is gone; the tracking category stays.
+
+**Not changed: `LrToolkitIdentifier`.** It is still the identifier of the
+original plug-in, and that is what actually prevents a parallel installation
+alongside 1.x. Changing it would make every existing per-photo value, every
+preference and the stored OAuth tokens invisible to the plug-in, because
+Lightroom keys all of them by that identifier. That needs a migration path and
+a deliberate decision, not a rename.
+
+## Version 2.0.57 (July 2026)
+
+**Metadata sets and editor workflows are now one thing.** Both sides read
+`~/LrMediaWiki2/workflows.toml`: the browser editor as before, and Lightroom's
+Metadata panel through six prepared tagset slots that take their title and
+their field list from the same file. Renaming a workflow renames the metadata
+set; reordering the fields reorders the panel. Slots beyond the number of
+workflows report themselves as unassigned.
+
+Each workflow now carries two lists, kept deliberately separate: `felder_aus`
+hides sections in the EDITOR, `felder` names the fields of the metadata SET.
+Every set gets a Wikitext field whether or not the file asks for it, and the
+Lightroom block (filename, capture date, location, people) is always appended.
+
+The Lua side needs its own reader for the file, since the editor's parser is
+JavaScript. It accepts the same subset but is deliberately forgiving: an
+unknown key is skipped and collected as a warning rather than thrown, because
+a tagset that dies at plug-in load would be far worse for the user than a
+skipped line - and the editor reports the error with its line number anyway.
+A file from an older version has no `felder` at all; those sets fall back to
+the fields of the former "Information" set rather than showing nothing.
+
+**Seven fields are declared again**: author, date, description_other,
+otherFields, otherVersions, source, templates - with the original version
+numbers, so existing values survive. They had been dropped from the provider
+while remaining listed in the Artwork and Object Photo sets, so they showed
+in the panel and did nothing. Source, author, templates and other fields are
+read per photo again and override the batch value from the export dialog,
+which is what the {{Artwork}} and {{Object photo}} templates need.
+
+The sets Information, Information (de), Artwork and Object Photo are no longer
+registered; their field lists live in the shipped workflows.toml. The files
+remain in the folder for reference.
+
+Note on `wikidata`: it feeds the Wikidata parameter of {{Artwork}} and names
+the depicted work - the pre-SDC ancestor of depicts. {{Object photo}} has no
+such parameter, so the field belongs in the artwork workflow only.
+
+## Version 2.0.56 (July 2026)
+
+**The path to workflows.toml is shown at all times.** In 2.0.55 the line only
+appeared when the list was empty - which is precisely when it was least
+needed: a file created by 2.0.53 was sitting there with workflows in it, so
+the line stayed hidden and the file stayed unfindable. The path is now always
+visible under the header, marked up so a single click selects the whole thing
+for copying.
+
+Note for existing installations: the file is never overwritten, so the two
+placeholder workflows from 2.0.53 remain in place. Replacing the file by hand
+with the shipped template is what brings in the five bilingual ones.
+
+## Version 2.0.55 (July 2026)
+
+**The workflows file could fail to appear without saying so.** Every failure
+path in `readWorkflowsToml` returned an empty string, which the page could not
+tell apart from "no workflows configured" - so a file that was never created
+left no trace anywhere. Each path now returns a reason as well; the page shows
+it, and whenever there are no workflows the page also prints the full path
+where the file belongs, so it can be found or created by hand.
+
+**Workflows are bilingual and carry no icons.** A block may hold both `name`
+(German) and `name_en` (English); the dropdown picks by interface language and
+falls back to whichever is present, then to the key. The shipped template is
+commented in both languages and now contains the five scenarios documented in
+SDC-Workflow.md - portrait at a film festival, artwork, group picture,
+landscape, museum or archive - instead of the two placeholders. The emoji in
+the SDC-Workflow.md headings are gone, and a test asserts the template stays
+free of them.
+
+## Version 2.0.54 (July 2026)
+
+**Write back to every selected photo.** With more than one photo selected, the
+editor footer shows a checkbox "to all N selected photos"; ticked, saving
+writes description_all, categories, depicts, created_during and the English
+caption to the whole selection in a SINGLE undo step. The setting is
+remembered like the interface language, and the box only ever appears when
+Lightroom reports more than one photo.
+
+This restores what was lost with the built-in dialog in 2.0.36, where the
+depicts "apply to all" tick disappeared.
+
+The selection is re-read at write time, never taken from the payload. If its
+size no longer matches what the page was showing when the box was ticked,
+NOTHING is written and the user is told both numbers: writing to a different
+set than the one in front of them is exactly the mistake the checkbox is
+meant to prevent. The bridge now also pushes a fresh state when only the
+SIZE of the selection changes, so the number beside the checkbox stays true
+without a photo switch.
+
+The decision itself is a pure function (`applyScope`) checked outside
+Lightroom, and the photoKey guard on the active photo is unchanged.
+
+## Version 2.0.53 (July 2026)
+
+**Workflows in the browser editor, configured by a plain text file** - the same
+mechanism as in Cammello. `~/LrMediaWiki2/workflows.toml` is created once from
+a commented template and never overwritten afterwards, so it survives updates.
+Each `[[workflow]]` block names hidden sections (`felder_aus`: depicts,
+kategorien, veranstaltung, unterschriften, satzbau, wikitext), presets that
+fill only EMPTY fields (`[workflow.vorbelegung]`) and a grey example text
+(`[workflow.beispiel]`, wikitext only). A dropdown in the page header picks
+the workflow; the choice is remembered like the interface language.
+
+Hiding never touches data: a hidden section's contents travel and save
+unchanged. Only when switching to a workflow that would hide FILLED sections
+does the page ask once whether to clear them - never silently. The file is
+parsed by the page (one parser, tested outside the browser with the shipped
+template); with the bridge running, an edited file takes effect on the next
+photo switch, no restart needed. A broken file reports its line number and
+simply yields no workflows.
+
+Release assets now show their real file names again
+("LrMediaWiki2-VERSION.zip", the complete bundle labelled "... mit
+Quelltext") in release.sh and the release workflow.
+
+## Version 2.0.52 (July 2026)
+
+Two problems with the composed description, both reported from real output.
+
+**Interwiki links were not piped.** `linked()` used the short form
+`[[:de:Sophie Wilde]]` whenever the article title and the display text were
+identical. An interwiki link with a leading colon renders its target verbatim,
+prefix included, so that reads as "de:Sophie Wilde" on the file page. The short
+form is gone; every link is now written as `[[:de:Article|Text]]`.
+
+**German needed inflection.** "bei den Internationale Filmfestspiele von Venedig
+2024" is wrong; it has to be "bei den Internationalen Filmfestspielen von
+Venedig 2024" - but only in the visible text, never in the link target, which
+has to stay the article title.
+
+Wikidata does not carry the inflected forms, so this is learned the same way the
+connecting words already are: a second field per event and language holds the
+display form, stored in `sdcEventForms` (same key shape `Qid|lang`, same pure
+merge, an emptied field forgets the entry). Left empty, the Wikidata label is
+used exactly as before.
+
+The inflection is bound to the connector: it carries the case the connector
+governs, so when no connector is learned and the event stands as an apposition
+after a comma, the plain label is used instead of the inflected form.
+
 ## Version 2.0.51 (July 2026)
 
 **Clicking a search hit did not apply the QID** (reported on Windows; keyboard

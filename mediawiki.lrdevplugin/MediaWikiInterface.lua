@@ -152,7 +152,7 @@ end
 
 MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 	-- fileEntries is a list of {fileName, caption} tables
-	local comment = 'Uploaded with LrMediaWiki ' .. MediaWikiUtils.getVersionString()
+	local comment = 'Uploaded with LrMediaWiki2 ' .. MediaWikiUtils.getVersionString()
 	local galleryOpen = '<gallery mode="packed-hover" heights="240">'
 	local galleryClose = '</gallery>'
 
@@ -212,7 +212,7 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 	if not MediaWikiInterface.loggedIn then
 		LrErrors.throwUserError(LOC "$$$/LrMediaWiki/Interface/Internal/NotLoggedIn=Internal error: not logged in before upload")
 	end
-	local comment = 'Uploaded with LrMediaWiki ' .. MediaWikiUtils.getVersionString() -- for new files
+	local comment = 'Uploaded with LrMediaWiki2 ' .. MediaWikiUtils.getVersionString() -- for new files
 	local commentSuffix = ' (LrMediaWiki ' .. MediaWikiUtils.getVersionString() .. ')' -- for updates
 
 	local ignorewarnings = false
@@ -360,7 +360,12 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 			-- Tolerate accidental leading whitespace (e.g. an indented line
 			-- pasted from elsewhere) so the key is still recognized.
 			local lang, val = line:match('^%s*caption_([%a][%w%-]*)=(.*)$')
-			if lang then
+			-- Die Trennueberschriften des Editors gehoeren NICHT nach Commons:
+			-- „# …" waere dort ein Aufzaehlungszeichen im Dateitext.
+			local kopf = MediaWikiUtils.trim(line)
+			if kopf == '# Structured Data' or kopf == '# Wikitext' then
+				-- verworfen
+			elseif lang then
 				structuredData['caption_' .. lang:lower()] = MediaWikiUtils.trim(val)
 			else
 				keptLines[#keptLines + 1] = line
