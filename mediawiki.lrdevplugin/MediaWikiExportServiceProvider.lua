@@ -338,8 +338,21 @@ local copyToClipboard = function(clipboardText, fileName)
 			LrTasks.execute(copyCmd)
 		end)
 	elseif MAC_ENV == true then
-		copyCmd = "export LANG=en_US.UTF-8; echo \"" .. clipboardText .. "\" | pbcopy"
-		LrTasks.execute(copyCmd)
+		-- Frueher wurde der Text direkt in die Shell-Zeile eingesetzt
+		-- (echo "<Text>" | pbcopy). Der Text ist aber der Vorschau-Wikitext
+		-- und enthaelt frei eingegebene Beschreibung und Felder; ein " oder
+		-- $(...) darin waere Shell-Befehlseinschleusung. Deshalb wie unter
+		-- Windows ueber eine TEMPORAERE DATEI, die pbcopy nur noch LIEST -
+		-- nichts vom Inhalt landet mehr in der Kommandozeile.
+		LrTasks.startAsyncTask( function ()
+			local tmpFile = os.tmpname()
+			local fd = assert(io.open(tmpFile, "w+"))
+			fd:write(clipboardText)
+			io.close(fd)
+			copyCmd = "export LANG=en_US.UTF-8; pbcopy < '" .. tmpFile .. "'"
+			LrTasks.execute(copyCmd)
+			os.remove(tmpFile)
+		end)
 	end
 end
 

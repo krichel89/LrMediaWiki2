@@ -256,12 +256,32 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 	fi
 
 	info "Release $TAG in $GHREPO"
+	# Derselbe Tag-Push hat oben schon den Workflow gestartet, der ebenfalls
+	# ein Release anlegt. Wer zuerst fertig ist, ist Zufall - deshalb hier
+	# genauso anlegen ODER ergaenzen statt blind zu erzeugen.
 	if frage "Release jetzt anlegen?"; then
-		gh release create "$TAG" --repo "$GHREPO" \
-			--title "LrMediaWiki2 $VERSION" --notes-file "$NOTIZ" \
-			"$NUTZER#LrMediaWiki2-$VERSION.zip" \
-			"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
-		gut "Release angelegt"
+		if gh release view "$TAG" --repo "$GHREPO" >/dev/null 2>&1; then
+			info "Release $TAG gibt es schon (vermutlich vom Workflow)."
+			if frage "Die hier gebauten Pakete trotzdem anhaengen?"; then
+				gh release upload "$TAG" --repo "$GHREPO" --clobber \
+					"$NUTZER#LrMediaWiki2-$VERSION.zip" \
+					"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
+				gut "Pakete ersetzt"
+			else
+				info "Unveraendert gelassen."
+			fi
+		else
+			gh release create "$TAG" --repo "$GHREPO" \
+				--title "LrMediaWiki2 $VERSION" --notes-file "$NOTIZ" \
+				"$NUTZER#LrMediaWiki2-$VERSION.zip" \
+				"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
+			gut "Release angelegt"
+		fi
+		# Ein Entwurf waere unsichtbar - siehe 2.0.50.
+		if [ "$(gh release view "$TAG" --repo "$GHREPO" --json isDraft -q .isDraft 2>/dev/null)" = "true" ]; then
+			warn "Release lag als Entwurf vor - wird veroeffentlicht."
+			gh release edit "$TAG" --repo "$GHREPO" --draft=false
+		fi
 	fi
 elif [ "$DRYRUN" = 0 ]; then
 	schritt "GitHub-Release"

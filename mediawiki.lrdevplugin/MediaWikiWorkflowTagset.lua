@@ -94,7 +94,7 @@ end
 
 -- Baut den Satz fuer Platz `nr` (1-basiert).
 function MediaWikiWorkflowTagset.build(nr)
-	local list = MediaWikiWorkflows.load()
+	local list = MediaWikiWorkflows.loadMerged()
 	local wf = list[nr]
 
 	local titel, felder

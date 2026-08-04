@@ -1,5 +1,35 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.62 (July 2026)
+
+Code review (security, performance, tidiness), three real findings.
+
+**Shell-command injection on macOS, fixed.** "Copy wikitext to clipboard"
+built the command line `echo "<text>" | pbcopy` with the preview wikitext
+inlined - and that text holds the freely typed description and fields. A `"`
+or `$(...)` in there would have run in the shell. It now writes the text to a
+temporary file and lets `pbcopy` read from it, exactly as the Windows branch
+already did; nothing from the content reaches the command line. Inherited from
+the upstream plug-in.
+
+**The metadata sets read the wrong file.** `MediaWikiWorkflows.load` read
+`~/LrMediaWiki2/workflows.toml` - already the wrong place before 2.0.61, and
+it never saw the user's own file at all. So Lightroom's six workflow metadata
+sets could show completely different workflows than the editor. They now go
+through the same `readWorkflowsToml` the editor uses (shipped + own file,
+merged).
+
+**Six reads collapsed into one.** Building the six tagset slots called the
+loader six times, reading and parsing the same file each time. A one-second
+cache serves the repeated calls from a single read; a check asserts it reads
+only once within the window. Removed a dead `path()` function that pointed at
+the old location and its now-unused import.
+
+The browser page was clean: every `innerHTML` takes a literal, and the only
+foreign data (Wikidata hits) goes in through `textContent` - no injection
+path. The Go helper serves its page from a fixed launch path, not from the
+request, and its `/` route rejects anything but exactly `/`.
+
 ## Version 2.0.61 (July 2026)
 
 **The user's own workflow file lives in the settings folder now**, not in the

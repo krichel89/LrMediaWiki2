@@ -140,18 +140,37 @@ jobs:
           fi
           wc -c < "$RUNNER_TEMP/notes.md"
 
-      - name: Release anlegen
+      # Anlegen ODER ergaenzen. Das Release kann schon da sein, weil
+      # release.sh es auf dem Rechner anlegt, waehrend derselbe Tag-Push
+      # diesen Lauf startet - wer zuerst fertig ist, ist Zufall. Frueher
+      # brach dieser Schritt dann mit "a release with the same tag name
+      # already exists" ab, obwohl gar nichts fehlte.
+      - name: Release anlegen oder ergaenzen
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          gh release create "v$V" \
-            --title "LrMediaWiki2 $V" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            "dist/LrMediaWiki2-$V.zip#LrMediaWiki2-$V.zip" \
-            "dist/LrMediaWiki2-complete-$V.zip#LrMediaWiki2-complete-$V.zip mit Quelltext"
+          NUTZER="dist/LrMediaWiki2-$V.zip#LrMediaWiki2-$V.zip"
+          VOLL="dist/LrMediaWiki2-complete-$V.zip#LrMediaWiki2-complete-$V.zip mit Quelltext"
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "Release v$V gibt es schon - haenge die Pakete an."
+            gh release upload "v$V" --clobber "$NUTZER" "$VOLL"
+          else
+            gh release create "v$V" \
+              --title "LrMediaWiki2 $V" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              "$NUTZER" "$VOLL"
+          fi
+          # Ein Entwurf waere unsichtbar - das ist beim Release 2.0.50
+          # passiert und hat lange niemand bemerkt.
+          if [ "$(gh release view "v$V" --json isDraft -q .isDraft)" = "true" ]; then
+            echo "Release lag als Entwurf vor - wird veroeffentlicht."
+            gh release edit "v$V" --draft=false
+          fi
+          gh release view "v$V" --json tagName,isDraft,assets \
+            -q '.tagName + "  Entwurf=" + (.isDraft|tostring) + "  Dateien=" + (.assets|length|tostring)'
 
       # Auch ohne Tag nuetzlich: die Pakete haengen am Lauf und lassen sich
       # herunterladen, etwa zum Ausprobieren vor dem Veroeffentlichen.

@@ -22,7 +22,8 @@ Zeilennummer bekommt er ohnehin im Editor.
 Nichts hier pausiert (LrPathUtils, io.*), pcall ist also unbedenklich.
 ]==]
 
-local LrPathUtils = import 'LrPathUtils'
+
+local MediaWikiSdcData = require 'MediaWikiSdcData'
 
 local MediaWikiWorkflows = {}
 
@@ -279,23 +280,34 @@ function MediaWikiWorkflows.parse(text)
 	return sauber, byKey, warn
 end
 
-function MediaWikiWorkflows.path()
-	local home = LrPathUtils.getStandardFilePath('home')
-	if not home or home == '' then return nil end
-	return LrPathUtils.child(LrPathUtils.child(home, 'LrMediaWiki2'),
-		'workflows.toml')
-end
-
 -- Liest die Datei und gibt die Liste zurueck. Fehlt sie, ist die Liste leer –
 -- die Metadatensaetze fallen dann auf ihre Ersatzbeschriftung zurueck.
+-- Alte Fassung: las allein ~/LrMediaWiki2/workflows.toml. Das war schon vor
+-- 2.0.61 der falsche Ort fuer die mitgelieferte Datei und kannte die eigene
+-- Datei des Nutzers gar nicht - die sechs Metadatensaetze bekamen damit voellig
+-- andere Workflows als der Editor. Bleibt als duenne Huelle fuer Altaufrufer.
 function MediaWikiWorkflows.load()
-	local p = MediaWikiWorkflows.path()
-	if not p then return {}, {}, { 'kein Persoenlicher Ordner' } end
-	local f = io.open(p, 'rb')
-	if not f then return {}, {}, { 'Datei nicht lesbar' } end
-	local text = f:read('*a') or ''
-	f:close()
-	return MediaWikiWorkflows.parse(text)
+	return MediaWikiWorkflows.loadMerged()
+end
+
+-- Genau die Quelle, die auch der Editor sieht: mitgelieferte + eigene Datei,
+-- zusammengefuehrt. Ergebnis wird kurz zwischengespeichert, weil beim Laden
+-- des Zusatzmoduls SECHS Tagset-Plaetze nacheinander bauen und sonst sechsmal
+-- dieselbe Datei gelesen und geparst wuerde.
+local _cache = nil        -- { list, byKey, warn }
+local _cacheZeit = 0
+local CACHE_S = 1
+
+function MediaWikiWorkflows.loadMerged()
+	local jetzt = os.time()
+	if _cache and (jetzt - _cacheZeit) < CACHE_S then
+		return _cache[1], _cache[2], _cache[3]
+	end
+	local text = MediaWikiSdcData.readWorkflowsToml()
+	local list, byKey, warn = MediaWikiWorkflows.parse(text or '')
+	_cache = { list, byKey, warn }
+	_cacheZeit = jetzt
+	return list, byKey, warn
 end
 
 return MediaWikiWorkflows
