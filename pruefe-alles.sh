@@ -2,6 +2,24 @@
 # Vollprüfung von LrMediaWiki2 vor der Auslieferung.
 # Bricht beim ersten Fehler ab.
 set -e
+
+# Ein eigener Temporaerordner fuer alle Zwischendateien - unvorhersagbarer
+# Name statt fester /tmp-Pfade, und ein einziger trap raeumt alles weg.
+TQ=$(mktemp -d "${TMPDIR:-/tmp}/lrmw2pruef.XXXXXX")
+trap 'rm -rf "$TQ" 2>/dev/null || true' EXIT
+
+# WINDOWS/GIT BASH: LuaJIT, python und go sind NATIVE Windows-Programme und
+# verstehen die MSYS-Pfade der Form /c/... nicht - loadfile meldet dann
+# "cannot open ...: No such file or directory", obwohl die Datei da ist.
+# cygpath -m macht daraus C:/... mit Schraegstrichen, das schluckt auch Lua.
+# Auf Mac und Linux gibt es cygpath nicht, dort bleibt der Pfad unveraendert.
+# Noetig nur fuer Pfade, die IN eine Zeichenkette eingesetzt werden; ein
+# blosses Argument wandelt MSYS von sich aus um.
+if command -v cygpath >/dev/null 2>&1; then
+	nativpfad() { cygpath -m "$1"; }
+else
+	nativpfad() { printf '%s' "$1"; }
+fi
 cd "$(dirname "$0")"
 
 # Wo liegt das Repo? Neben diesem Skript, oder per LRMW_REPO gesetzt. Damit
@@ -81,13 +99,26 @@ elif command -v luac-5.1 >/dev/null 2>&1; then
 else
 	LUAC=""
 fi
+
+# Python wird fuer zwei Stufen gebraucht. Auf Windows liegt unter dem Namen
+# python3 oft nur die Store-Verknuepfung von Microsoft - eine leere Datei,
+# die beim Aufruf nur einen Hinweis ausgibt. `command -v` faellt darauf
+# herein, deshalb wird jeder Kandidat AUSGEFUEHRT und muss antworten.
+PYTHON=""
+for k in python3 python; do
+	command -v "$k" >/dev/null 2>&1 || continue
+	if [ "$("$k" -c 'import sys; sys.stdout.write("ja")' 2>/dev/null || true)" = "ja" ]; then
+		PYTHON="$k"; break
+	fi
+done
 pruefe_syntax() {
 	if [ -n "$LUAC" ]; then
 		$LUAC "$1"
 	else
 		# Der Umbruch als '\n' in EINFACHEN Anfuehrungszeichen. In [[ ]] waere
 		# er ein wortwoertliches Backslash-n und stuende so in der Meldung.
-		"$LUA51" -e "local f, e = loadfile([[$1]]); if not f then io.stderr:write(e, '\n'); os.exit(1) end"
+		lokal_pfad=$(nativpfad "$1")
+		"$LUA51" -e "local f, e = loadfile([[$lokal_pfad]]); if not f then io.stderr:write(e, '\n'); os.exit(1) end"
 	fi
 }
 echo "Lua 5.1: $LUA51$([ -n "$LUAC" ] && echo " (Syntaxpruefung mit ${LUAC%% *})" || echo " (Syntaxpruefung ueber loadfile)")"
@@ -101,7 +132,7 @@ reihe() {
 		echo "   uebersprungen ($datei nicht vorhanden)"
 	fi
 }
-PLUG=$REPO/mediawiki.lrdevplugin
+PLUG="$REPO/mediawiki.lrdevplugin"
 export GOFLAGS=-mod=mod GOCACHE=/tmp/gocache GOPATH=/tmp/gopath
 
 echo "=============================================================="
@@ -134,7 +165,7 @@ echo "=============================================================="
 echo " 1. Lua-Syntax auf ALLE Dateien"
 echo "=============================================================="
 n=0
-for f in $PLUG/*.lua $REPO/tools/*.lua; do
+for f in "$PLUG"/*.lua "$REPO"/tools/*.lua; do
 	pruefe_syntax "$f"
 	n=$((n+1))
 done
@@ -144,7 +175,7 @@ echo
 echo "=============================================================="
 echo " 2. Info.lua wirklich laden und Menü prüfen"
 echo "=============================================================="
-( cd $PLUG && "$LUA51" - <<'EOF'
+( cd "$PLUG" && "$LUA51" - <<'EOF'
 local info = assert(loadfile('Info.lua'))()
 assert(info.LrPluginName == 'LrMediaWiki2')
 assert(info.LrToolkitIdentifier == 'org.ireas.lightroom.mediawiki',
@@ -180,11 +211,11 @@ echo
 echo "=============================================================="
 echo " 3. Metadatenfeld-Audit (nicht deklarierte Felder = Abbruchfehler)"
 echo "=============================================================="
-grep -o "id = '[a-zA-Z_]*'" $PLUG/MediaWikiMetadataProvider.lua \
-	| sed "s/id = '//;s/'//" | sort > /tmp/declared.txt
-grep -ho "PropertyForPlugin([A-Za-z_.]*, *'[a-zA-Z_]*'" $PLUG/*.lua \
-	| sed "s/.*'\(.*\)'/\1/" | sort -u > /tmp/used.txt
-extra=$(comm -13 /tmp/declared.txt /tmp/used.txt | grep -v '^description_$' || true)
+grep -o "id = '[a-zA-Z_]*'" "$PLUG/MediaWikiMetadataProvider.lua" \
+	| sed "s/id = '//;s/'//" | sort > "$TQ/declared.txt"
+grep -ho "PropertyForPlugin([A-Za-z_.]*, *'[a-zA-Z_]*'" "$PLUG"/*.lua \
+	| sed "s/.*'\(.*\)'/\1/" | sort -u > "$TQ/used.txt"
+extra=$(comm -13 "$TQ/declared.txt" "$TQ/used.txt" | grep -v '^description_$' || true)
 if [ -n "$extra" ]; then echo "   FEHLER, nicht deklariert: $extra"; exit 1; fi
 echo "   nur der erlaubte dynamische Aufruf 'description_' .. lang"
 
@@ -192,7 +223,7 @@ echo
 echo "=============================================================="
 echo " 4. pcall-Audit (pausierender Aufruf in einem pcall = Fehler)"
 echo "=============================================================="
-hits=$(grep -n "pcall(function()" $PLUG/*.lua | grep -E "LrTasks\.(sleep|execute)|LrHttp\.(get|post)|getTargetPhoto|PropertyForPlugin|withWriteAccessDo|getFormattedMetadata|getRawMetadata" || true)
+hits=$(grep -n "pcall(function()" "$PLUG"/*.lua | grep -E "LrTasks\.(sleep|execute)|LrHttp\.(get|post)|getTargetPhoto|PropertyForPlugin|withWriteAccessDo|getFormattedMetadata|getRawMetadata" || true)
 if [ -n "$hits" ]; then echo "   FEHLER:"; echo "$hits"; exit 1; fi
 echo "   kein pausierender Aufruf in einer pcall-Zeile"
 
@@ -204,7 +235,7 @@ echo "=============================================================="
 # (body, status). Wer den zweiten Rueckgabewert "status" nennt und mit 200
 # vergleicht, prueft eine Tabelle gegen eine Zahl - immer ungleich, immer
 # stillschweigend falsch. Genau so ist die Bruecke in 2.0.37 nie angelaufen.
-schlecht=$(grep -n "local *[A-Za-z_]*, *status *= *LrHttp\." $PLUG/*.lua || true)
+schlecht=$(grep -n "local *[A-Za-z_]*, *status *= *LrHttp\." "$PLUG"/*.lua || true)
 if [ -n "$schlecht" ]; then
 	echo "   FEHLER: zweiter Rueckgabewert von LrHttp heisst 'status',"
 	echo "           das ist aber die Header-TABELLE:"
@@ -212,8 +243,8 @@ if [ -n "$schlecht" ]; then
 	exit 1
 fi
 # Gegenprobe: jeder LrHttp-Aufruf muss von einer .status-Entnahme begleitet sein
-anzahl_calls=$(grep -c "LrHttp\.\(get\|post\|postMultipart\)(" $PLUG/*.lua | awk -F: '{s+=$2} END {print s}')
-anzahl_status=$(grep -c "Headers\.status\|headers\.status\|headers and headers.status" $PLUG/*.lua | awk -F: '{s+=$2} END {print s}')
+anzahl_calls=$(grep -c "LrHttp\.\(get\|post\|postMultipart\)(" "$PLUG"/*.lua | awk -F: '{s+=$2} END {print s}')
+anzahl_status=$(grep -c "Headers\.status\|headers\.status\|headers and headers.status" "$PLUG"/*.lua | awk -F: '{s+=$2} END {print s}')
 echo "   $anzahl_calls LrHttp-Aufrufe, $anzahl_status Stellen entnehmen .status korrekt"
 
 echo
@@ -223,7 +254,11 @@ echo "=============================================================="
 # `local function f` ist erst AB seiner Definition sichtbar. Ein Aufruf davor
 # greift nach einer globalen Variablen, also nach nil - Laufzeitabbruch, den
 # luac -p nicht findet. Genau so ein Fehler war in 2.0.43 fast ausgeliefert.
-python3 - "$PLUG" <<'PYEOF'
+if [ -z "$PYTHON" ]; then
+	echo "   uebersprungen (kein lauffaehiges Python gefunden)"
+	echo "   Windows: winget install Python.Python.3.12, danach Git Bash neu oeffnen"
+else
+"$PYTHON" - "$(nativpfad "$PLUG")" <<'PYEOF'
 import re, sys, glob, os
 fehler = 0
 for pfad in sorted(glob.glob(os.path.join(sys.argv[1], '*.lua'))):
@@ -245,6 +280,7 @@ for pfad in sorted(glob.glob(os.path.join(sys.argv[1], '*.lua'))):
 sys.exit(1 if fehler else 0)
 PYEOF
 echo "   kein local function vor seiner Definition benutzt"
+fi
 
 echo
 echo "=============================================================="
@@ -305,8 +341,8 @@ HOSTBIN="${TMPDIR:-/tmp}/sdcbridge-host"
 echo "=============================================================="
 echo " 8. Hintergrund-App: go vet und Bau aller Zielplattformen"
 echo "=============================================================="
-( cd $REPO/bridge && go vet ./... && echo "   go vet ohne Befund" )
-( cd $REPO/bridge
+( cd "$REPO/bridge" && go vet ./... && echo "   go vet ohne Befund" )
+( cd "$REPO/bridge"
 CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-arm64     ./sdcbridge.go
 CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-x86_64    ./sdcbridge.go
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-win-amd64.exe ./sdcbridge.go
@@ -314,19 +350,27 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o .
 # also nativ. Vorher stand hier fest GOOS=linux; auf einem Mac liess sich das
 # Ergebnis nicht starten ("cannot execute binary file").
 CGO_ENABLED=0 go build -trimpath -o "$HOSTBIN" ./sdcbridge.go )
-chmod 755 $PLUG/bin/*
+chmod 755 "$PLUG"/bin/*
 echo "   drei Zielplattformen gebaut, dazu eine Fassung fuer diesen Rechner"
 
 echo
 echo "=============================================================="
 echo " 9. Funktionstest der Hintergrund-App (echter HTTP-Umlauf)"
 echo "=============================================================="
-HTML=$REPO/editor/sdc-editor.html
-rm -f /tmp/pf.txt /tmp/sse.txt /tmp/page.html
-"$HOSTBIN" --token GEHEIM --page "$HTML" --portfile /tmp/pf.txt --idle 3m --log /tmp/bridge.log &
+HTML="$REPO/editor/sdc-editor.html"
+"$HOSTBIN" --token GEHEIM --page "$(nativpfad "$HTML")" \
+	--portfile "$(nativpfad "$TQ/pf.txt")" --idle 3m --log "$(nativpfad "$TQ/bridge.log")" &
 SRV=$!
-for i in $(seq 1 60); do [ -s /tmp/pf.txt ] && break; sleep 0.1; done
-PORT=$(python3 -c "import json;print(json.load(open('/tmp/pf.txt'))['port'])")
+for _ in $(seq 1 60); do [ -s "$TQ/pf.txt" ] && break; sleep 0.1; done
+# Die Portdatei ist ein einzeiliges JSON. Mit sed statt Python gelesen -
+# eine Abhaengigkeit weniger, und auf Windows ist Python oft nicht da.
+PORT=$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$TQ/pf.txt")
+if [ -z "$PORT" ]; then
+	echo "   FEHLER: kein Port in der Portdatei:" >&2
+	cat "$TQ/pf.txt" >&2 || true
+	kill "$SRV" 2>/dev/null || true
+	exit 1
+fi
 B="http://127.0.0.1:$PORT"
 fail=0
 t() { # name erwartet ergebnis
@@ -335,9 +379,9 @@ t() { # name erwartet ergebnis
 t "ohne Token"        403 "$(curl -s -o /dev/null -w '%{http_code}' $B/state)"
 t "falsches Token"    403 "$(curl -s -o /dev/null -w '%{http_code}' "$B/state?t=FALSCH")"
 t "fremder Host-Kopf" 403 "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: boese.example' "$B/state?t=GEHEIM")"
-t "Seite"             200 "$(curl -s -o /tmp/page.html -w '%{http_code}' "$B/?t=GEHEIM")"
-cmp -s /tmp/page.html "$HTML" && echo "   ok    ausgelieferte Seite bytegleich" || { echo "   FEHLER Seite abweichend"; fail=1; }
-( curl -s -N --max-time 4 "$B/events?t=GEHEIM" > /tmp/sse.txt ) & SSE=$!
+t "Seite"             200 "$(curl -s -o "$TQ/page.html" -w '%{http_code}' "$B/?t=GEHEIM")"
+cmp -s "$TQ/page.html" "$HTML" && echo "   ok    ausgelieferte Seite bytegleich" || { echo "   FEHLER Seite abweichend"; fail=1; }
+( curl -s -N --max-time 4 "$B/events?t=GEHEIM" > "$TQ/sse.txt" ) & SSE=$!
 sleep 0.5
 curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' \
   -d '{"state":{"photoKey":"foto-1","fileName":"a.NEF","captions":{"de":"x"},"depicts":["Q640"]}}' >/dev/null
@@ -345,14 +389,25 @@ curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' \
   -d '{"state":{"photoKey":"foto-2","fileName":"b.NEF","captions":{},"depicts":[]}}' >/dev/null
 curl -s -X POST "$B/result?t=GEHEIM" -H 'Content-Type: application/json' \
   -d '{"photoKey":"foto-2","depicts":"Q42","uiLang":"de"}' >/dev/null
-got=$(curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' -d '{}' | python3 -c "import json,sys;print(json.load(sys.stdin).get('result',{}).get('depicts'))")
+# Ohne Python ausgewertet - auf Windows liegt unter python3 oft nur die
+# Store-Verknuepfung. Die Antwort ist {"rev":N,"result":{…},"subs":N}, und
+# "result" traegt json:",omitempty": ist kein Ergebnis da, FEHLT der
+# Schluessel ganz. result ist ein flaches Objekt, deshalb reicht [^}]*.
+antwort=$(curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' -d '{}')
+ergebnis=$(printf '%s' "$antwort" | sed -n 's/.*"result":{\([^}]*\)}.*/\1/p')
+got=$(printf '%s' "$ergebnis" | sed -n 's/.*"depicts"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 t "Ergebnis kommt zurueck" "Q42" "$got"
-again=$(curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' -d '{}' | python3 -c "import json,sys;print(json.load(sys.stdin).get('result') is None)")
-t "und nur einmal" "True" "$again"
+antwort2=$(curl -s -X POST "$B/sync?t=GEHEIM" -H 'Content-Type: application/json' -d '{}')
+if printf '%s' "$antwort2" | grep -q '"result"'; then again=nein; else again=ja; fi
+t "und nur einmal" "ja" "$again"
 wait $SSE 2>/dev/null || true
-evts=$(grep -c '^event: state' /tmp/sse.txt || true)
+evts=$(grep -c '^event: state' "$TQ/sse.txt" || true)
 t "Ereignisstrom meldet Fotowechsel" "3" "$evts"
-kill $SRV 2>/dev/null || true
+# Erst beenden, DANN auf das Ende warten. Unter Windows haelt ein noch
+# laufender Prozess seine Protokolldatei offen, und das Aufraeumen am
+# Skriptende scheitert mit "Device or resource busy".
+kill "$SRV" 2>/dev/null || true
+wait "$SRV" 2>/dev/null || true
 [ $fail -eq 0 ] || exit 1
 
 echo

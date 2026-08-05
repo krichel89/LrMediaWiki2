@@ -17,6 +17,12 @@ name: Release
 #   MACOS_NOTARY_APPLE_ID Apple-ID
 #   MACOS_NOTARY_PASSWORD app-spezifisches Kennwort
 #   MACOS_NOTARY_TEAM_ID  Team-ID
+# Fuer Windows genuegt EIN Geheimnis:
+#   WIN_SIGN_CMD          vollstaendiger Signierbefehl; der Pfad zur EXE wird
+#                         als letztes Argument angehaengt. Zugangsdaten als
+#                         weitere Geheimnisse (WIN_SIGN_USER, WIN_SIGN_PASSWORD,
+#                         WIN_SIGN_TOTP, WIN_SIGN_CREDENTIAL_ID) referenzieren,
+#                         z. B. per $WIN_SIGN_USER im Befehl.
 
 on:
   push:
@@ -33,6 +39,7 @@ jobs:
       # Auf JOB-Ebene, damit der Wert im "if" eines Schrittes sichtbar ist -
       # der eigene env-Block eines Schrittes ist das nicht.
       HAT_ZERTIFIKAT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      HAT_WIN_SIGN: ${{ secrets.WIN_SIGN_CMD != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -116,11 +123,38 @@ jobs:
           # einzelne Binaerdatei laesst sich kein Ticket heften. Gatekeeper
           # fragt online nach - das genuegt fuer den ersten Start.
           ditto -c -k --keepParent "$B/sdcbridge-mac" "$RUNNER_TEMP/bridge.zip"
+          # notarytool kann auch bei Status "Invalid" mit Rueckgabewert 0
+          # enden - deshalb zusaetzlich auf das Wort Accepted pruefen, sonst
+          # liefe ein unnotarisiertes Paket gruen durch.
           xcrun notarytool submit "$RUNNER_TEMP/bridge.zip" \
             --apple-id "$MACOS_NOTARY_APPLE_ID" \
             --password "$MACOS_NOTARY_PASSWORD" \
-            --team-id "$MACOS_NOTARY_TEAM_ID" --wait
+            --team-id "$MACOS_NOTARY_TEAM_ID" --wait \
+            | tee "$RUNNER_TEMP/notary.log"
+          grep -qi 'status: *Accepted' "$RUNNER_TEMP/notary.log" \
+            || { echo "Notarisierung nicht Accepted." >&2; exit 1; }
           security delete-keychain "$KB"
+
+      # Windows-Signierung ueber einen EIGENEN Befehl im Geheimnis
+      # WIN_SIGN_CMD - z. B. der CodeSignTool-Aufruf eines Cloud-HSM. Der
+      # Dateiname der EXE wird als letztes Argument angehaengt. So bindet
+      # sich jeder Anbieter ein, ohne dass der Workflow angefasst wird.
+      # Weitere Zugangsdaten kommen als eigene Geheimnisse in den Befehl
+      # hinein (WIN_SIGN_USER etc.), der Workflow reicht sie durch.
+      - name: Windows-Programm signieren
+        if: env.HAT_WIN_SIGN == 'true'
+        env:
+          WIN_SIGN_CMD: ${{ secrets.WIN_SIGN_CMD }}
+          WIN_SIGN_USER: ${{ secrets.WIN_SIGN_USER }}
+          WIN_SIGN_PASSWORD: ${{ secrets.WIN_SIGN_PASSWORD }}
+          WIN_SIGN_TOTP: ${{ secrets.WIN_SIGN_TOTP }}
+          WIN_SIGN_CREDENTIAL_ID: ${{ secrets.WIN_SIGN_CREDENTIAL_ID }}
+        run: |
+          set -euo pipefail
+          EXE=mediawiki.lrdevplugin/bin/sdcbridge-win-amd64.exe
+          [ -f "$EXE" ] || { echo "$EXE fehlt." >&2; exit 1; }
+          sh -c "$WIN_SIGN_CMD \"\$1\"" _ "$EXE"
+          echo "signiert: $EXE"
 
       - name: Pakete bauen
         run: ./packe.sh dist

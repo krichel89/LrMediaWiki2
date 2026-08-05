@@ -30,6 +30,7 @@ MediaWikiPluginInfoProvider.startDialog = function(propertyTable)
   propertyTable.logging = MediaWikiUtils.getLogging()
   propertyTable.preview_wikitext_font_name = MediaWikiUtils.getPreviewWikitextFontName()
   propertyTable.preview_wikitext_font_size = MediaWikiUtils.getPreviewWikitextFontSize()
+  propertyTable.login_browser = MediaWikiUtils.getLoginBrowser()
 end
 
 MediaWikiPluginInfoProvider.endDialog = function(propertyTable)
@@ -41,6 +42,7 @@ MediaWikiPluginInfoProvider.endDialog = function(propertyTable)
   MediaWikiUtils.setLogging(propertyTable.logging)
   MediaWikiUtils.setPreviewWikitextFontName(propertyTable.preview_wikitext_font_name)
   MediaWikiUtils.setPreviewWikitextFontSize(propertyTable.preview_wikitext_font_size)
+  MediaWikiUtils.setLoginBrowser(propertyTable.login_browser)
 end
 
 MediaWikiPluginInfoProvider.sectionsForTopOfDialog = function(viewFactory, propertyTable)
@@ -167,6 +169,26 @@ MediaWikiPluginInfoProvider.sectionsForTopOfDialog = function(viewFactory, prope
 					value = bind 'structured_data',
 					title = LOC "$$$/LrMediaWiki/Section/Config/StructuredData=Support structured data",
 					tooltip = LOC "$$$/LrMediaWiki/Section/Config/StructuredDataTooltip=Support of structured data",
+				},
+			},
+
+			viewFactory:row {
+				viewFactory:static_text {
+					title = LOC "$$$/LrMediaWiki/Section/Config/LoginBrowser=Browser for the login" .. ':',
+					alignment = labelAlignment,
+					tooltip = LOC "$$$/LrMediaWiki/Section/Config/LoginBrowserTooltip=The Wikimedia login opens in this browser. “System default” keeps the previous behaviour. If the chosen browser cannot be started, the system default is used.",
+				},
+				viewFactory:popup_menu {
+					value = bind 'login_browser',
+					items = {
+						{ title = LOC "$$$/LrMediaWiki/Section/Config/LoginBrowserDefault=System default", value = '' },
+						{ title = 'Firefox', value = 'firefox' },
+						{ title = 'Google Chrome', value = 'chrome' },
+						{ title = 'Microsoft Edge', value = 'edge' },
+						{ title = 'Safari' .. ' (macOS)', value = 'safari' },
+						{ title = 'Vivaldi', value = 'vivaldi' },
+						{ title = 'Brave', value = 'brave' },
+					},
 				},
 			},
 

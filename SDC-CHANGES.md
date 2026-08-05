@@ -1,5 +1,32 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.64
+
+- Lizenz übernommen: LICENSE.txt (X11) und CREDITS.txt des Vorgängerprojekts
+  liegen jetzt im Repo und in beiden Paketen; eigene Copyright-Zeile ergänzt,
+  die der Vorautoren unverändert. Die Verweise in README und Dateiköpfen
+  zeigen damit nicht mehr ins Leere.
+- Browser für die Anmeldung wählbar (Zusatzmodul-Manager → Konfiguration):
+  Firefox, Google Chrome, Microsoft Edge, Safari (macOS), Vivaldi oder Brave.
+  Voreinstellung bleibt der Standardbrowser; lässt sich der gewählte Browser
+  nicht starten, öffnet der Standardbrowser.
+- Anmeldestatus nennt den Account auch bei Anmeldungen aus älteren
+  Versionen: fehlt der gespeicherte Name, wird er einmalig im Hintergrund
+  von der API geholt.
+- Werkzeugkette: packe.sh legt LICENSE.txt und CREDITS.txt ins Nutzerpaket
+  (mit Gegenprobe) und verträgt jetzt auch absolute Zielpfade; release.sh mit
+  optionaler Signierstufe (macOS codesign+notarytool, Windows über eigenen
+  Befehl oder PFX); release.yml prüft die Notarisierung auf "Accepted" und
+  hat einen optionalen Windows-Signierschritt (Geheimnis WIN_SIGN_CMD);
+  pruefe-alles.sh nutzt einen eigenen mktemp-Ordner statt fester /tmp-Namen.
+
+## Version 2.0.63
+
+- Der Windows-Zweig von "Wikitext in die Zwischenablage" ließ seine
+  Temporärdatei mit dem kompletten Vorschau-Wikitext liegen - sie wird jetzt
+  nach dem Kopieren gelöscht, wie im Mac-Zweig seit 2.0.62. (Aus dem
+  Originalprojekt geerbt.)
+
 ## Version 2.0.62 (July 2026)
 
 Code review (security, performance, tidiness), three real findings.

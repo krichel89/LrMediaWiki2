@@ -156,6 +156,50 @@ MediaWikiUtils.setLogging = function(logging)
 	end
 end
 
+-- Browser for the OAuth login. The stored value is a key from the table
+-- below; the empty string means the system default browser. Pure string
+-- building here - the caller runs the command via LrTasks.execute, which
+-- must NEVER be wrapped in pcall (Lua 5.1 cannot yield across pcall).
+local LOGIN_BROWSERS = {
+	firefox = { mac = 'Firefox',        win = 'firefox' },
+	chrome  = { mac = 'Google Chrome',  win = 'chrome'  },
+	edge    = { mac = 'Microsoft Edge', win = 'msedge'  },
+	safari  = { mac = 'Safari',         win = nil       },
+	vivaldi = { mac = 'Vivaldi',        win = 'vivaldi' },
+	brave   = { mac = 'Brave Browser',  win = 'brave'   },
+}
+
+MediaWikiUtils.getLoginBrowser = function()
+	return prefs.loginBrowser or ''
+end
+
+MediaWikiUtils.setLoginBrowser = function(browser)
+	prefs.loginBrowser = browser
+end
+
+-- Returns the shell command that opens the URL in the chosen browser, or
+-- nil if the default browser should be used (no choice made, unknown key,
+-- browser not available on this platform, or a suspicious URL).
+MediaWikiUtils.loginBrowserCommand = function(url)
+	local entry = LOGIN_BROWSERS[MediaWikiUtils.getLoginBrowser()]
+	if entry == nil or type(url) ~= 'string' then
+		return nil
+	end
+	-- The URL is assembled from percent-encoded parts, so quotes and
+	-- backslashes cannot occur. Guard anyway: anything suspicious goes to
+	-- the default browser instead of into a shell line.
+	if string.match(url, [=[['"\%s]]=]) then
+		return nil
+	end
+	if MAC_ENV then
+		return "open -a '" .. entry.mac .. "' '" .. url .. "'"
+	elseif WIN_ENV and entry.win then
+		-- start: the first quoted argument is the window title, hence "".
+		return 'start "" ' .. entry.win .. ' "' .. url .. '"'
+	end
+	return nil
+end
+
 MediaWikiUtils.getPreviewWikitextFontName = function()
 	return prefs.preview_wikitext_font_name or '' -- no default value
 end

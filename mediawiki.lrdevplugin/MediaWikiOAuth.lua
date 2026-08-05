@@ -491,7 +491,25 @@ function MediaWikiOAuth.authorize(functionContext, apiPath)
 		MediaWikiOAuth.redirectUri, stateValue, challenge)
 
 	MediaWikiUtils.trace('OAuth: opening browser for authorisation (state and verifier redacted)')
-	pcall(function() LrHttp.openUrlInBrowser(url) end)
+	-- n: wish 31.07.2026 - open the login in a browser of the user's choice
+	-- (configured in the Plug-in Manager). LrTasks.execute must NOT sit in
+	-- a pcall (Lua 5.1 cannot yield across pcall); we run inside the login
+	-- task without one, so a plain call is correct here.
+	local opened = false
+	local browserCmd = MediaWikiUtils.loginBrowserCommand(url)
+	if browserCmd then
+		local rc = LrTasks.execute(browserCmd)
+		if rc == 0 then
+			opened = true
+			MediaWikiUtils.trace('OAuth: opened login in the chosen browser')
+		else
+			MediaWikiUtils.trace('OAuth: chosen browser failed (rc '
+				.. tostring(rc) .. '), falling back to the default browser')
+		end
+	end
+	if not opened then
+		pcall(function() LrHttp.openUrlInBrowser(url) end)
+	end
 
 	local params, err = MediaWikiOAuth.waitForRedirect(functionContext,
 		MediaWikiOAuth.port, MediaWikiOAuth.timeoutSeconds)

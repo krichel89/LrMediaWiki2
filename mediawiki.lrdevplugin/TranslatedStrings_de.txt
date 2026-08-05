@@ -250,3 +250,6 @@
 "$$$/LrMediaWiki/Metadata/DescriptionAll=Raw Metadata"
 "$$$/LrMediaWiki/Section/UploadInformation/OtherFields=Andere Felder"
 "$$$/LrMediaWiki/Section/UploadInformation/OtherFieldsTooltip=Andere Felder^n^nZusätzlicher Wikitext/Templates, die nach der Infobox eingefügt werden (gleiche Stelle wie „Andere Templates“). Gilt für alle Dateien dieses Exports. Beispiele:^n  {{Credit line}}^n  {{Information field}}"
+"$$$/LrMediaWiki/Section/Config/LoginBrowser=Browser für die Anmeldung"
+"$$$/LrMediaWiki/Section/Config/LoginBrowserTooltip=Die Wikimedia-Anmeldung öffnet sich in diesem Browser. „Standardbrowser“ behält das bisherige Verhalten. Lässt sich der gewählte Browser nicht starten, wird der Standardbrowser benutzt."
+"$$$/LrMediaWiki/Section/Config/LoginBrowserDefault=Standardbrowser"

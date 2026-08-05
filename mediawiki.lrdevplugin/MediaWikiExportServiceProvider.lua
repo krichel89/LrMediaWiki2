@@ -336,6 +336,9 @@ local copyToClipboard = function(clipboardText, fileName)
 			copyCmd = "chcp 65001 & clip < " .. tmpFile -- chcp 65001 == change code page to UTF-8
 			io.close(fd)
 			LrTasks.execute(copyCmd)
+			-- The file holds the full preview wikitext; do not leave it behind
+			-- (the Mac branch below removes its file too).
+			os.remove(tmpFile)
 		end)
 	elseif MAC_ENV == true then
 		-- Frueher wurde der Text direkt in die Shell-Zeile eingesetzt
@@ -587,6 +590,26 @@ end
 
 MediaWikiExportServiceProvider.startDialog = function(propertyTable)
 	updateOAuthStatus(propertyTable)
+	-- Logins from before 2.0.6x stored no username, so their status line can
+	-- only say "Logged in." - fetch the name once in the background and the
+	-- bound status text will name the account.
+	local storedToken = MediaWikiOAuth.loadToken(propertyTable.api_path)
+	if storedToken and MediaWikiUtils.isStringEmpty(storedToken.username) then
+		LrTasks.startAsyncTask(function()
+			local apiPath = propertyTable.api_path
+			MediaWikiApi.apiPath = apiPath
+			local accessToken = MediaWikiOAuth.getValidAccessToken(apiPath)
+			if accessToken then
+				MediaWikiApi.setAccessToken(accessToken)
+				local user = MediaWikiApi.getLoggedInUser()
+				MediaWikiApi.setAccessToken(nil)
+				if user then
+					MediaWikiOAuth.setStoredUsername(apiPath, user)
+					updateOAuthStatus(propertyTable)
+				end
+			end
+		end)
+	end
 	-- Keep the status line in sync when the user switches to another wiki.
 	propertyTable:addObserver('api_path', function()
 		updateOAuthStatus(propertyTable)

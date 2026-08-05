@@ -1,0 +1,3 @@
+Robin Krahl <robin.krahl@wikipedia.de>
+Eckhard Henkel <eckhard.henkel@wikipedia.de>
+Harald Krichel <https://github.com/krichel89> (LrMediaWiki2 fork)

@@ -1,0 +1,17 @@
+# Shell-Skripte MUESSEN mit LF im Arbeitsverzeichnis liegen. Mit CRLF stirbt
+# bash sofort und mit einer Meldung, die nichts erklaert ("$'\r': command not
+# found"). Auf einem Windows-Klon mit core.autocrlf=true passiert genau das
+# ohne Zutun.
+*.sh text eol=lf
+
+# Dasselbe fuer alles, was von Lua, Go, node oder GitHub Actions gelesen wird.
+*.lua   text eol=lf
+*.go    text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+
+# Binaerdateien nie anfassen.
+*.zip   binary
+*.exe   binary
