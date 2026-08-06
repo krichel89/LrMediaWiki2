@@ -1,5 +1,18 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.65
+
+- Kategorien stehen jetzt in der Vorschau „Das wird gespeichert" – abgesetzt
+  unter einer eigenen Überschrift, weil sie nicht in den Wikitext gehören,
+  sondern in ihr eigenes Lightroom-Feld. Bisher blieben sie dort unsichtbar,
+  obwohl sie gespeichert wurden.
+- Kategorien werden nur noch am Semikolon getrennt, nicht mehr auch am Komma.
+  Kategorienamen mit Komma („Films by Harald Krichel, Berlin") zerfielen
+  sonst in zwei falsche Kategorien. Für Zeigt/Entstanden bei bleibt das
+  Komma als Trenner erhalten.
+- Der Abschnitt „Kategorien" steht jetzt unter „Entstanden bei".
+- Knopf „Unterschriften erzeugen" heißt jetzt „Bildunterschriften erzeugen".
+
 ## Version 2.0.64
 
 - Lizenz übernommen: LICENSE.txt (X11) und CREDITS.txt des Vorgängerprojekts

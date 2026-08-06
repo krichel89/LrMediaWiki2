@@ -376,7 +376,7 @@ fail=0
 t() { # name erwartet ergebnis
 	if [ "$2" = "$3" ]; then echo "   ok    $1 ($3)"; else echo "   FEHLER $1: erwartet $2, bekommen $3"; fail=1; fi
 }
-t "ohne Token"        403 "$(curl -s -o /dev/null -w '%{http_code}' $B/state)"
+t "ohne Token"        403 "$(curl -s -o /dev/null -w '%{http_code}' "$B/state")"
 t "falsches Token"    403 "$(curl -s -o /dev/null -w '%{http_code}' "$B/state?t=FALSCH")"
 t "fremder Host-Kopf" 403 "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: boese.example' "$B/state?t=GEHEIM")"
 t "Seite"             200 "$(curl -s -o "$TQ/page.html" -w '%{http_code}' "$B/?t=GEHEIM")"

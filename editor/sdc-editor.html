@@ -228,18 +228,6 @@ footer .status.done{color:var(--accent)}
       <div class="chips" id="depChips"></div>
     </section>
 
-    <!-- Kategorien --------------------------------------------------------- -->
-    <section id="secKategorien">
-      <h2 data-i18n="catTitle">Kategorien</h2>
-      <p class="hint" data-i18n="catHint"></p>
-      <div class="rowline">
-        <input type="text" id="catInput" data-i18n-ph="catPh"
-               autocomplete="off">
-        <button id="catSuggest" data-i18n="catSuggest">Aus Nummern vorschlagen</button>
-      </div>
-      <div class="chips" id="catChips"></div>
-    </section>
-
     <!-- Created during ----------------------------------------------------- -->
     <section id="secVeranstaltung">
       <h2><span data-i18n="cdTitle">Entstanden bei</span> <span class="pid">P10408</span></h2>
@@ -250,6 +238,18 @@ footer .status.done{color:var(--accent)}
       </div>
       <div class="results" id="cdResults"></div>
       <div class="chips" id="cdChips"></div>
+    </section>
+
+    <!-- Kategorien --------------------------------------------------------- -->
+    <section id="secKategorien">
+      <h2 data-i18n="catTitle">Kategorien</h2>
+      <p class="hint" data-i18n="catHint"></p>
+      <div class="rowline">
+        <input type="text" id="catInput" data-i18n-ph="catPh"
+               autocomplete="off">
+        <button id="catSuggest" data-i18n="catSuggest">Aus Nummern vorschlagen</button>
+      </div>
+      <div class="chips" id="catChips"></div>
     </section>
 
     <!-- Bildunterschriften ------------------------------------------------- -->
@@ -268,7 +268,7 @@ footer .status.done{color:var(--accent)}
       <p class="hint" data-i18n="composeHint"></p>
       <div id="connRows"></div>
       <div class="rowline" style="margin-top:.6rem">
-        <button id="composeBtn" data-i18n="composeBtn">Unterschriften erzeugen</button>
+        <button id="composeBtn" data-i18n="composeBtn">Bildunterschriften erzeugen</button>
       </div>
     </section>
 
@@ -388,7 +388,7 @@ var STRINGS = {
     capAdd: "Sprache hinzufügen",
     composeTitle: "Satzbau",
     composeHint: "Erzeugt Bildunterschrift und Beschreibung aus den Motiven und der Veranstaltung – für jede Sprache, die schon eine Bildunterschrift hat. Die Fügung je Sprache steht unten; bleibt sie leer, wird die kasusfreie Form „Name, Veranstaltung“ genommen statt falsch zu flektieren. Das zweite Feld nimmt die gebeugte Anzeigeform der Veranstaltung auf – sie ersetzt nur den sichtbaren Text, das Linkziel bleibt der Artikeltitel.",
-    composeBtn: "Unterschriften erzeugen",
+    composeBtn: "Bildunterschriften erzeugen",
     composeBusy: "Hole Bezeichnungen und Artikel von Wikidata …",
     composeDone: "{0} Sprache(n) erzeugt.",
     composeNoDepicts: "Ohne Motiv (depicts) lässt sich nichts zusammensetzen.",
@@ -418,6 +418,7 @@ var STRINGS = {
     previewTitle: "Das wird gespeichert",
     previewHint: "Der Inhalt des Felds „Raw Metadata“, genau so, wie das Zusatzmodul ihn ablegt.",
     previewEmpty: "(leer)",
+    previewCats: "# Kategorien (eigenes Feld, nicht im Wikitext)",
     save: "Speichern und zu Lightroom",
     revert: "Änderungen verwerfen",
     copy: "In die Zwischenablage",
@@ -502,6 +503,7 @@ var STRINGS = {
     previewTitle: "What will be saved",
     previewHint: "The contents of the “Raw Metadata” field, exactly as the plug-in stores them.",
     previewEmpty: "(empty)",
+    previewCats: "# Categories (own field, not part of the wikitext)",
     save: "Save and back to Lightroom",
     revert: "Discard changes",
     copy: "Copy to clipboard",
@@ -593,6 +595,14 @@ var state = { depicts: [], createdDuring: null, categories: [], captions: [],
 var DETAILS = { labels: {}, sitelinks: {}, human: {}, conn: {}, form: {} };
 var dirty = false;
 
+/* Kategorien trennen NUR am Semikolon: Kategorienamen auf Commons enthalten
+   haeufig ein Komma ("Films by X, Berlin"), und die Lightroom-Seite trennt
+   sie ebenfalls nur am Semikolon. Fuer Depicts und Nummern bleibt das Komma
+   richtig - dort trennt Lua ebenso. */
+function splitCats(s){
+  return String(s || "").split(";").map(function(t){ return t.trim(); })
+         .filter(function(t){ return t !== ""; });
+}
 function splitTokens(s){
   return String(s || "").split(/[;,]/).map(function(t){ return t.trim(); })
          .filter(function(t){ return t !== ""; });
@@ -611,7 +621,7 @@ function load(){
                   .filter(Boolean);
   var cd = splitTokens(PAYLOAD.createdDuring).map(parseToken).filter(Boolean);
   state.createdDuring = cd.length ? cd[0] : null;
-  state.categories = splitTokens(PAYLOAD.categories);
+  state.categories = splitCats(PAYLOAD.categories);
   /* Gelernte Fuegungen kommen aus den Lightroom-Voreinstellungen mit. NICHT
      im localStorage halten: die Seite laeuft unter einem neuen Port bei jedem
      Start der Bruecke, und der Port gehoert zur Herkunft - der Speicher waere
@@ -750,7 +760,7 @@ function applyWorkflowPrefill(){
     if (cd.length) { state.createdDuring = cd[0]; changed = true; }
   }
   if (v.kategorien && state.categories.length === 0) {
-    state.categories = splitTokens(v.kategorien);
+    state.categories = splitCats(v.kategorien);
     changed = changed || state.categories.length > 0;
   }
   if (v.wikitext && state.freetext.trim() === "") {
@@ -1652,11 +1662,34 @@ function copyText(text){
   });
 }
 
+/* Kategorien stehen NICHT im Wikitext - sie gehen in ihr eigenes Lightroom-
+   Feld. Gespeichert werden sie trotzdem, deshalb gehoeren sie in die
+   Vorschau, aber sichtbar abgesetzt. Sie duerfen NIE in buildWikitext
+   geraten: dessen Ergebnis landet in description_all. */
+function appendCatPreview(pre){
+  if (!state.categories.length) return;
+  if (pre.firstChild) pre.appendChild(document.createTextNode("\n"));
+  var hh = document.createElement("span");
+  hh.className = "h";
+  hh.textContent = t("previewCats");
+  pre.appendChild(hh);
+  pre.appendChild(document.createTextNode("\n"));
+  state.categories.forEach(function(c){
+    var k = document.createElement("span");
+    k.className = "k"; k.textContent = "categories=";
+    pre.appendChild(k);
+    pre.appendChild(document.createTextNode(c + "\n"));
+  });
+}
+
 function renderPreview(){
   var pre = document.getElementById("preview");
   var text = buildWikitext();
   pre.innerHTML = "";
-  if (!text) { pre.textContent = t("previewEmpty"); return; }
+  if (!text) {
+    if (state.categories.length) { appendCatPreview(pre); return; }
+    pre.textContent = t("previewEmpty"); return;
+  }
   text.split("\n").forEach(function(line){
     if (isHeading(line)) {
       var hh = document.createElement("span");
@@ -1685,6 +1718,7 @@ function renderPreview(){
     }
     pre.appendChild(document.createTextNode("\n"));
   });
+  appendCatPreview(pre);
 }
 
 function renderAll(){
