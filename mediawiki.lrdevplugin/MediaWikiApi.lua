@@ -418,32 +418,65 @@ function MediaWikiApi.clearEditToken()
 	MediaWikiApi.cachedEditToken = nil
 end
 
+-- Reads the wikitext of a page through THE API, not through index.php.
+--
+-- Until 2.0.68 this used index.php?action=raw and sent the OAuth bearer
+-- token along with it. Wikimedia only evaluates bearer tokens on api.php
+-- and rest.php; on index.php the Authorization header makes the request
+-- fail with HTTP 400 - which the caller then read as "some error", so an
+-- existing gallery was never updated and a missing one never created.
+--
+-- Returns: content, kind, detail
+--   'ok'      content holds the wikitext (may be an empty string)
+--   'missing' the page does not exist yet - the caller may create it
+--   'invalid' MediaWiki rejects the title; detail carries the reason
+--   'error'   anything else; detail carries a short description
 function MediaWikiApi.getPageContent(page)
-	-- Use action=raw via performHttpRequest to get wikitext directly as plain text
-	-- Returns: content, httpStatus
-	--   content is nil if the page is missing (404) OR on any other error;
-	--   callers must check httpStatus to tell those cases apart (404 = missing).
-
-	local requestHeaders = {
-		{
-			field = 'User-Agent',
-			value = MediaWikiApi.userAgent,
-		},
+	local xml = MediaWikiApi.performRequest {
+		action = 'query',
+		prop = 'revisions',
+		rvprop = 'content',
+		rvslots = 'main',
+		titles = page,
+		format = 'xml',
 	}
-	MediaWikiApi.addAuthHeader(requestHeaders)
-	-- Build the index.php?action=raw URL from the api path
-	-- e.g. https://commons.wikimedia.org/w/api.php -> https://commons.wikimedia.org/w/index.php
-	local indexPath = MediaWikiApi.apiPath:gsub('api%.php', 'index.php')
-	local url = indexPath .. '?action=raw&title=' .. MediaWikiApi.urlEncode(page)
-
-	local LrHttp = import 'LrHttp'
-	local resultBody, resultHeaders = LrHttp.get(url, requestHeaders)
-	local status = resultHeaders and resultHeaders.status or nil
-	if status == 200 and resultBody then
-		return resultBody, status
-	else
-		return nil, status -- 404 = page does not exist; anything else = error
+	local pageNode = xml and xml.query and xml.query.pages and xml.query.pages.page
+	if type(pageNode) ~= 'table' then
+		return nil, 'error', 'unexpected response'
 	end
+	-- Attributes without a value arrive as an empty string, so test for nil.
+	if pageNode.invalid ~= nil then
+		return nil, 'invalid', pageNode.invalidreason or ''
+	end
+	if pageNode.missing ~= nil then
+		return nil, 'missing'
+	end
+	local rev = pageNode.revisions and pageNode.revisions.rev
+	local slot = rev and rev.slots and rev.slots.slot
+	local text = slot and slot['*']
+	if text == nil and rev ~= nil then
+		text = rev['*'] -- wikis without slot support
+	end
+	if type(text) ~= 'string' then
+		if rev ~= nil then
+			-- The page exists but is empty: the XML reader only stores text
+			-- when there IS text, so an empty page arrives without the key.
+			return '', 'ok'
+		end
+		return nil, 'error', 'no content in response'
+	end
+	return text, 'ok'
+end
+
+-- Same, for callers that must not abort on a network error. LrTasks.pcall,
+-- never plain pcall: the request pauses, and a pause cannot cross a C call.
+function MediaWikiApi.getPageContentSafe(page)
+	local ok, content, kind, detail = LrTasks.pcall(
+		MediaWikiApi.getPageContent, page)
+	if not ok then
+		return nil, 'error', tostring(content)
+	end
+	return content, kind, detail
 end
 
 function MediaWikiApi.appendToPage(page, section, text, comment)

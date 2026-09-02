@@ -180,9 +180,10 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 		end
 	end
 
-	-- Try to read existing page content
-	local existingContent, httpStatus = MediaWikiApi.getPageContent(galleryName)
-	if existingContent and type(existingContent) == 'string' then
+	-- Read the existing page. Which of the three cases we are in comes from
+	-- the API answer itself, no longer from an HTTP status code.
+	local existingContent, kind, detail = MediaWikiApi.getPageContentSafe(galleryName)
+	if kind == 'ok' and type(existingContent) == 'string' then
 		local newContent
 		if existingContent:find(galleryClose, 1, true) then
 			-- Insert new entries just before the last </gallery>
@@ -194,15 +195,22 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 			newContent = existingContent:gsub('%s*$', '') .. '\n' .. newEntries .. galleryClose
 		end
 		MediaWikiApi.setPageContent(galleryName, newContent, comment)
-	elseif httpStatus == 404 then
+	elseif kind == 'missing' then
 		-- Page really does not exist: create fresh
 		local text = galleryOpen .. '\n' .. newEntries .. galleryClose
 		MediaWikiApi.setPageContent(galleryName, text, comment)
+	elseif kind == 'invalid' then
+		-- The title itself is the problem - name it, a number helps nobody.
+		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryBadTitle=The gallery page title \"^1\" is not accepted by the wiki (^2). Gallery not updated.",
+			tostring(galleryName), tostring(detail))
+		MediaWikiUtils.trace(msg)
+		LrDialogs.showBezel(msg, 5)
 	else
-		-- Read failed for another reason (e.g. HTTP 429 right after a batch,
-		-- or a network error). Creating a "fresh" page now would OVERWRITE an
-		-- existing gallery, so skip the gallery update and tell the user.
-		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryReadFailed=Gallery page could not be read (HTTP status ^1). Gallery not updated to avoid overwriting it.", tostring(httpStatus))
+		-- Read failed for another reason (e.g. a network error). Creating a
+		-- "fresh" page now would OVERWRITE an existing gallery, so skip the
+		-- gallery update and tell the user.
+		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryReadFailed=Gallery page \"^1\" could not be read (^2). Gallery not updated to avoid overwriting it.",
+			tostring(galleryName), tostring(detail or kind))
 		MediaWikiUtils.trace(msg)
 		LrDialogs.showBezel(msg, 5)
 	end

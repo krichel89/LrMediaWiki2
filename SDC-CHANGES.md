@@ -1,5 +1,18 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.69
+
+- Behoben: „Galerie-Seite konnte nicht gelesen werden (HTTP-Status 400)".
+  Der Seiteninhalt wurde über index.php?action=raw geholt, und dabei ging
+  der OAuth-Token mit. Wikimedia wertet Bearer-Token nur auf api.php und
+  rest.php aus; auf index.php führt der Authorization-Kopf zu HTTP 400.
+  Folge: eine bestehende Galerie wurde nie ergänzt und eine fehlende nie
+  angelegt. Gelesen wird jetzt über die API.
+- Ob eine Seite fehlt, sagt jetzt die API-Antwort selbst, statt aus dem
+  HTTP-Status geraten zu werden. Ein vom Wiki abgelehnter Seitentitel wird
+  als solcher gemeldet – mit dem Titel und dem Grund in der Meldung, nicht
+  nur einer Zahl. Eine vorhandene, aber leere Seite gilt als lesbar.
+
 ## Version 2.0.68
 
 - „Auf alle markierten Fotos" verteilt jetzt nur noch die Felder, die seit
