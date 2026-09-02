@@ -16,6 +16,7 @@
 local LrErrors = import 'LrErrors'
 local LrHttp = import 'LrHttp'
 local LrPathUtils = import 'LrPathUtils'
+local LrTasks = import 'LrTasks'
 local LrXml = import 'LrXml'
 
 local JSON = require 'JSON'
@@ -328,24 +329,52 @@ end
 -- Returns the name of the user the current session (cookie or bearer token)
 -- belongs to, or nil if the request is anonymous. Used to confirm an OAuth
 -- login and to show the account name in the export dialog.
+-- Asks the wiki who the current bearer token belongs to.
+-- Returns the user name, or nil if the token is not accepted (anonymous).
+--
+-- NO pcall AROUND THE REQUEST. performRequest performs HTTP and therefore
+-- pauses; in Lua 5.1 a pause cannot cross a C function, and pcall is one.
+-- Until 2.0.65 the request sat in a pcall, which silently turned EVERY
+-- failure into nil - the caller then reported "login no longer valid" no
+-- matter what had really gone wrong. Network and API errors now travel up
+-- as the user errors they are; callers that must not throw use
+-- getLoggedInUserSafe below.
 function MediaWikiApi.getLoggedInUser()
 	local arguments = {
 		action = 'query',
 		meta = 'userinfo',
 		format = 'xml',
 	}
-	local ok, xml = pcall(function() return MediaWikiApi.performRequest(arguments) end)
-	if not ok or type(xml) ~= 'table' then
-		return nil
-	end
-	if not (xml.query and xml.query.userinfo) then
+	local xml = MediaWikiApi.performRequest(arguments)
+	if type(xml) ~= 'table' or not (xml.query and xml.query.userinfo) then
+		MediaWikiUtils.trace('userinfo: unexpected response shape')
 		return nil
 	end
 	local id = xml.query.userinfo.id
 	if id == nil or id == '0' then -- '0' = anonymous, name is the IP address
+		MediaWikiUtils.trace('userinfo: anonymous (id ' .. tostring(id)
+			.. ') - the access token was not accepted')
 		return nil
 	end
+	MediaWikiUtils.trace('userinfo: logged in as "'
+		.. tostring(xml.query.userinfo.name) .. '"')
 	return xml.query.userinfo.name
+end
+
+-- Same question, for places that only want to LABEL something and must not
+-- throw (the login button, the export dialog opening). Returns
+-- user, errorMessage.
+--
+-- LrTasks.pcall, not pcall: it is the only variant that lets a pausing call
+-- inside it. Should it still fail, the reason is at least logged instead of
+-- vanishing.
+function MediaWikiApi.getLoggedInUserSafe()
+	local ok, user = LrTasks.pcall(MediaWikiApi.getLoggedInUser)
+	if not ok then
+		MediaWikiUtils.trace('userinfo failed: ' .. tostring(user))
+		return nil, tostring(user)
+	end
+	return user
 end
 
 function MediaWikiApi.logout()

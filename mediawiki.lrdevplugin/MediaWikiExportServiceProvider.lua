@@ -567,11 +567,20 @@ local function oauthLogin(propertyTable)
 		end
 
 		-- Confirm the token really works and find out who it belongs to.
+		-- The previous state is put back afterwards, NOT cleared: an export
+		-- may be running in parallel, and setting the token to nil would
+		-- pull the authorisation out from under it.
+		local prevPath, prevToken = MediaWikiApi.apiPath, MediaWikiApi.accessToken
 		MediaWikiApi.apiPath = apiPath
 		local accessToken = MediaWikiOAuth.getValidAccessToken(apiPath)
 		MediaWikiApi.setAccessToken(accessToken)
-		local user = MediaWikiApi.getLoggedInUser()
-		MediaWikiApi.setAccessToken(nil)
+		local user, userErr = MediaWikiApi.getLoggedInUserSafe()
+		MediaWikiApi.apiPath = prevPath
+		MediaWikiApi.setAccessToken(prevToken)
+		if userErr then
+			propertyTable.oauth_status = LOC("$$$/LrMediaWiki/OAuth/Failed=Login failed: ^1", userErr)
+			return
+		end
 		if user then
 			MediaWikiOAuth.setStoredUsername(apiPath, user)
 			if MediaWikiUtils.isStringEmpty(propertyTable.username) then
@@ -597,16 +606,21 @@ MediaWikiExportServiceProvider.startDialog = function(propertyTable)
 	if storedToken and MediaWikiUtils.isStringEmpty(storedToken.username) then
 		LrTasks.startAsyncTask(function()
 			local apiPath = propertyTable.api_path
+			local prevPath, prevToken = MediaWikiApi.apiPath, MediaWikiApi.accessToken
 			MediaWikiApi.apiPath = apiPath
 			local accessToken = MediaWikiOAuth.getValidAccessToken(apiPath)
 			if accessToken then
 				MediaWikiApi.setAccessToken(accessToken)
-				local user = MediaWikiApi.getLoggedInUser()
-				MediaWikiApi.setAccessToken(nil)
+				local user = MediaWikiApi.getLoggedInUserSafe()
+				-- Restore, never clear: an export could be running.
+				MediaWikiApi.apiPath = prevPath
+				MediaWikiApi.setAccessToken(prevToken)
 				if user then
 					MediaWikiOAuth.setStoredUsername(apiPath, user)
 					updateOAuthStatus(propertyTable)
 				end
+			else
+				MediaWikiApi.apiPath = prevPath
 			end
 		end)
 	end

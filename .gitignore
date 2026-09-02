@@ -30,3 +30,8 @@ LrMediaWiki2-*.zip
 mediawiki.lrdevplugin/workflows-eigene.toml
 release.log
 pruefung-fehler.log
+
+# Nur zum Testen der Editorseite installiert - gehoert in kein Paket.
+node_modules/
+package-lock.json
+package.json

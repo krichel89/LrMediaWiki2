@@ -80,7 +80,8 @@ NUTZER="$ZIEL/LrMediaWiki2-$VERSION.zip"
 VOLL="$ZIEL/LrMediaWiki2-complete-$VERSION.zip"
 rm -f "$NUTZER" "$VOLL"
 
-AUS=(-x '*/.git/*' -x '*.DS_Store' -x '*/._*' -x '*/dist/*')
+AUS=(-x '*/.git/*' -x '*.DS_Store' -x '*/._*' -x '*/dist/*' \
+     -x '*/node_modules/*')
 
 # --- Nutzerpaket: der Zusatzmodul-Ordner plus Lizenz ----------------------
 # LICENSE.txt und CREDITS.txt MUESSEN mit: die X11-Lizenz verlangt den

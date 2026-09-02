@@ -658,6 +658,8 @@ function load(){
   renderWorkflowNote();
   if (PAYLOAD.workflowsNote) setStatus(PAYLOAD.workflowsNote, "dirty");
   else if (WF.error) setStatus(t("wfBadFile", WF.error), "dirty");
+  /* Zuletzt, wenn state vollständig steht: der Vergleichspunkt. */
+  loadedCore = coreOut();
 }
 
 /* ---------------------------------------------------------------------------
@@ -1862,13 +1864,52 @@ function setStatus(text, kind){
    der Reihe nach abgeschickt. Ohne Port (Datei allein geöffnet) wird das
    Ergebnis nur angezeigt.
 --------------------------------------------------------------------------- */
-function payloadOut(){
+/* Die fünf Werte, die in Lightroom-Felder wandern - an EINER Stelle gebaut,
+   damit der Schnappschuss beim Laden und der Vergleich beim Speichern
+   garantiert dasselbe messen. */
+function coreOut(){
   var caps = {};
   state.captions.forEach(function(c){
     var l = (c.lang || "").trim().toLowerCase();
     var t = (c.text || "").trim();
     if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && t) caps[l] = t;
   });
+  return {
+    depicts: state.depicts.map(tokenText).join("; "),
+    createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
+    categories: state.categories.join("; "),
+    captions: caps,
+    freetext: state.freetext || ""
+  };
+}
+
+/* Zustand direkt nach dem Laden. Wird beim Speichern gegen den aktuellen
+   verglichen: nur was sich WIRKLICH unterscheidet, darf auf die übrigen
+   markierten Fotos geschrieben werden. Ohne das trug der Haken „auf alle
+   markierten" auch unberührte Felder weiter - bei drei verschiedenen
+   Motiven genau das Falsche. */
+var loadedCore = null;
+
+function changedFields(){
+  var now = coreOut();
+  var was = loadedCore || {};
+  var ch = {
+    depicts:       now.depicts       !== (was.depicts || ""),
+    createdDuring: now.createdDuring !== (was.createdDuring || ""),
+    categories:    now.categories    !== (was.categories || ""),
+    captions:      JSON.stringify(now.captions) !== JSON.stringify(was.captions || {}),
+    freetext:      now.freetext      !== (was.freetext || "")
+  };
+  /* description_all wird aus Unterschriften, Zeigt, Entstanden bei und
+     Freitext zusammengesetzt - es gilt als geändert, sobald eines davon
+     sich geändert hat. Die Kategorien stehen NICHT darin. */
+  ch.wikitext = ch.depicts || ch.createdDuring || ch.captions || ch.freetext;
+  return ch;
+}
+
+function payloadOut(){
+  var core = coreOut();
+  var caps = core.captions;
   return {
     token: PAYLOAD.token || "",
     photoKey: PAYLOAD.photoKey || "",
@@ -1880,12 +1921,15 @@ function payloadOut(){
        noch dieselbe ist wie beim Ankreuzen. */
     applyToAll: !!state.applyToAll,
     photoCount: photoCount(),
-    depicts: state.depicts.map(tokenText).join("; "),
-    createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
-    categories: state.categories.join("; "),
+    depicts: core.depicts,
+    createdDuring: core.createdDuring,
+    categories: core.categories,
     captions: caps,
-    freetext: state.freetext || "",
-    wikitext: buildWikitext()
+    freetext: core.freetext,
+    wikitext: buildWikitext(),
+    /* Welche Felder der Nutzer seit dem Öffnen angefasst hat. Das aktive
+       Foto bekommt immer alles; die übrigen markierten nur diese hier. */
+    changed: changedFields()
   };
 }
 

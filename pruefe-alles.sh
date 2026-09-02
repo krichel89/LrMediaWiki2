@@ -227,6 +227,19 @@ hits=$(grep -n "pcall(function()" "$PLUG"/*.lua | grep -E "LrTasks\.(sleep|execu
 if [ -n "$hits" ]; then echo "   FEHLER:"; echo "$hits"; exit 1; fi
 echo "   kein pausierender Aufruf in einer pcall-Zeile"
 
+# MITTELBARER Fall: pcall um eine EIGENE Funktion, die selbst HTTP macht.
+# Genau daran ist 2.0.65 gescheitert - im pcall stand performRequest, das
+# HTTP passierte erst eine Ebene tiefer, und die Zeile oben sah sauber aus.
+mittelbar=$(grep -n "pcall(.*\(performRequest\|performHttpRequest\|getLoggedInUser\|postForm\|getEditToken\)" \
+	"$PLUG"/*.lua | grep -v "LrTasks.pcall" || true)
+if [ -n "$mittelbar" ]; then
+	echo "FEHLER: pcall um eine Funktion, die selbst HTTP macht:" >&2
+	printf '%s\n' "$mittelbar" | sed 's/^/     /' >&2
+	echo "   Ein pausierender Aufruf kann nicht ueber pcall hinweg pausieren." >&2
+	exit 1
+fi
+echo "   auch kein mittelbarer Fall (pcall um eine HTTP-Funktion)"
+
 echo
 echo "=============================================================="
 echo " 4b. LrHttp-Audit (der Fehler, der 2.0.37 die Bruecke kostete)"

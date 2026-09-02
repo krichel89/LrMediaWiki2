@@ -1,5 +1,33 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.68
+
+- „Auf alle markierten Fotos" verteilt jetzt nur noch die Felder, die seit
+  dem Öffnen des Editors WIRKLICH geändert wurden. Bisher schrieb der Haken
+  immer den ganzen Satz – bei drei verschiedenen Motiven überschrieb er
+  damit auf den anderen Fotos, was dort richtig stand. Das aktive Foto
+  bekommt weiterhin alles.
+- Der Haken ist bei mehreren markierten Fotos jetzt voreingestellt. Bei
+  einem einzelnen Foto bleibt er aus und unsichtbar.
+- packe.sh nimmt node_modules nicht mehr ins Paket auf (Testwerkzeug).
+
+## Version 2.0.67
+
+- Behoben: Der Export brach mit „The saved Wikimedia login is no longer
+  valid" ab, obwohl die Anmeldung in Ordnung war. Ursache war ein `pcall`
+  um die Abfrage „wer bin ich?": in Lua 5.1 kann ein pausierender Aufruf
+  nicht über eine C-Funktion hinweg pausieren, und `pcall` ist eine – die
+  HTTP-Anfrage scheiterte deshalb immer, und der Fehler wurde zu einem
+  stummen nil verschluckt. Aus demselben Grund zeigte die Statuszeile nach
+  der Anmeldung nie den Kontonamen.
+- Fehler dieser Abfrage werden jetzt gemeldet, statt zu einer irreführenden
+  Meldung zu werden; das Protokoll hält Ergebnis und Fehler fest.
+- Der Anmeldezustand wird nach dem Namensabruf wiederhergestellt statt
+  gelöscht – ein parallel laufender Export verliert so nicht mitten im
+  Hochladen seine Berechtigung.
+- Prüfstufe 4 erkennt jetzt auch mittelbare Fälle: ein `pcall` um eine
+  Funktion, die selbst HTTP macht, fällt künftig sofort auf.
+
 ## Version 2.0.65
 
 - Kategorien stehen jetzt in der Vorschau „Das wird gespeichert" – abgesetzt

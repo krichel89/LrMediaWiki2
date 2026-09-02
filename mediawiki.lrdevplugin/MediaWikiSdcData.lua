@@ -427,7 +427,10 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 		workflow = MediaWikiSdcData.prefs().sdcWorkflow or '',
 		-- Voreinstellung des Hakens „auf alle markierten“. Die Seite zeigt
 		-- ihn ohnehin nur bei mehr als einem Foto.
-		applyToAll = MediaWikiSdcData.prefs().sdcApplyToAll and true or false,
+		-- Voreinstellung EIN (Wunsch 02.09.2026): bei Mehrfachauswahl ist das
+		-- Verteilen der Regelfall. Nur ein ausdrueckliches false schaltet ab,
+		-- ein noch nie gesetzter Wert (nil) gilt als ein.
+		applyToAll = MediaWikiSdcData.prefs().sdcApplyToAll ~= false,
 		depicts = effectiveSdcValue(depictsField, depicts),
 		createdDuring = effectiveSdcValue(createdField, createdDuring),
 		categories = categories,
@@ -488,15 +491,45 @@ function MediaWikiSdcData.applyResult(catalog, photos, result)
 	local caps = result.captions
 	local captionEn = type(caps) == 'table' and trim(caps.en or '') or nil
 
+	-- Welche Felder darf ein Foto bekommen, das NICHT das aktive war?
+	-- Nur die, die der Nutzer seit dem Oeffnen angefasst hat. Sonst truege
+	-- der Haken "auf alle markierten" auch unberuehrte Felder weiter und
+	-- ueberschriebe auf den anderen Fotos, was dort richtig stand.
+	-- Fehlt die Angabe (aeltere Seite), gilt wie frueher: alles.
+	local changed = type(result.changed) == 'table' and result.changed or nil
+	local function darf(feld)
+		if changed == nil then return true end
+		return changed[feld] == true
+	end
+
+	-- Das aktive Foto bekommt IMMER den vollen Satz. Welches das ist, wird
+	-- HIER bestimmt - vor withWriteAccessDo, weil photoKey den Katalog liest
+	-- und pausierende Aufrufe nicht in den Schreibblock gehoeren.
+	local sourceKey = trim(result.photoKey or '')
+	local istQuelle = {}
+	for i = 1, #list do
+		istQuelle[i] = (sourceKey ~= '')
+			and (MediaWikiSdcData.photoKey(list[i]) == sourceKey)
+	end
+
 	catalog:withWriteAccessDo('LrMediaWiki: SDC aus dem Browser', function()
 		for i = 1, #list do
 			local p = list[i]
 			if p then
-				p:setPropertyForPlugin(_PLUGIN, 'description_all', trim(result.wikitext or ''))
-				p:setPropertyForPlugin(_PLUGIN, 'categories', trim(result.categories or ''))
-				p:setPropertyForPlugin(_PLUGIN, 'depicts', trim(result.depicts or ''))
-				p:setPropertyForPlugin(_PLUGIN, 'created_during', trim(result.createdDuring or ''))
-				if captionEn ~= nil then
+				local voll = istQuelle[i]
+				if voll or darf('wikitext') then
+					p:setPropertyForPlugin(_PLUGIN, 'description_all', trim(result.wikitext or ''))
+				end
+				if voll or darf('categories') then
+					p:setPropertyForPlugin(_PLUGIN, 'categories', trim(result.categories or ''))
+				end
+				if voll or darf('depicts') then
+					p:setPropertyForPlugin(_PLUGIN, 'depicts', trim(result.depicts or ''))
+				end
+				if voll or darf('createdDuring') then
+					p:setPropertyForPlugin(_PLUGIN, 'created_during', trim(result.createdDuring or ''))
+				end
+				if captionEn ~= nil and (voll or darf('captions')) then
 					p:setPropertyForPlugin(_PLUGIN, 'caption_en', captionEn)
 				end
 			end
