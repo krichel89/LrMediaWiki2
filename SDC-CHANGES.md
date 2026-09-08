@@ -1,5 +1,22 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.71
+
+- Auch die Kategorien haben jetzt einen Verlauf: Klick ins leere Feld zeigt
+  die zuletzt benutzten, Tippen engt sie ein (Teiltreffer, Groß- und
+  Kleinschreibung egal), Pfeiltasten und Enter übernehmen. Enter auf freiem
+  Text legt wie bisher eine neue Kategorie an. Was schon als Chip hängt,
+  wird nicht noch einmal angeboten.
+
+## Version 2.0.70
+
+- Zuletzt benutzte Einträge: Ein Klick ins leere Suchfeld von „Zeigt" oder
+  „Entstanden bei" zeigt die letzten acht Auswahlen; ab dem dritten Zeichen
+  übernimmt wie bisher die Wikidata-Suche. Der Verlauf liegt in den
+  Voreinstellungen, überlebt also Fotowechsel und Neustart, und wird beim
+  Speichern fortgeschrieben – zuletzt Benutztes steht oben, Dubletten werden
+  über die Q-Nummer erkannt. Beide Felder führen getrennte Listen.
+
 ## Version 2.0.69
 
 - Behoben: „Galerie-Seite konnte nicht gelesen werden (HTTP-Status 400)".

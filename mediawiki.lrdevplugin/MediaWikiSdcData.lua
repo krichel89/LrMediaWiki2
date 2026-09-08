@@ -440,6 +440,14 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 		-- Ergebnis zurueck; die Seite darf sie nicht selbst dauerhaft halten,
 		-- weil ihre Herkunft bei jedem Start der Bruecke einen neuen Port
 		-- bekommt und der Browserspeicher damit jedes Mal leer waere.
+		-- Zuletzt benutzte Eintraege fuer Zeigt und Entstanden bei. Sie
+		-- liegen in den Voreinstellungen, ueberleben also Fotowechsel und
+		-- Neustart; die Seite zeigt sie beim Klick ins leere Suchfeld.
+		recent = {
+			depicts = MediaWikiSdcData.prefs().sdcRecentDepicts or {},
+			createdDuring = MediaWikiSdcData.prefs().sdcRecentCreatedDuring or {},
+			categories = MediaWikiSdcData.prefs().sdcRecentCategories or {},
+		},
 		connectors = MediaWikiSdcData.prefs().sdcConnectors or {},
 		-- Gelernte Anzeigeformen (gebeugte Fassung des Veranstaltungsnamens).
 		-- Gleiche Schluesselform wie die Fuegungen, deshalb dieselbe reine
@@ -451,6 +459,36 @@ end
 -- photos: entweder EIN Foto oder eine Liste von Fotos. Alle Schreibzugriffe
 -- laufen in EINEM withWriteAccessDo, damit ein Widerruf in Lightroom die
 -- ganze Uebernahme zurueckholt und nicht Foto fuer Foto.
+local MAX_VERLAUF = 8
+
+-- Fuegt die Eintraege aus einer Semikolon-Liste vorn in den Verlauf ein.
+-- Vergleich ueber die Q-Nummer, damit derselbe Eintrag mit anderer
+-- Beschriftung nicht doppelt erscheint.
+function MediaWikiSdcData.merkeVerlauf(schluessel, liste)
+	if type(liste) ~= 'string' or liste == '' then return end
+	local alt = MediaWikiSdcData.prefs()[schluessel] or {}
+	local neu, gesehen = {}, {}
+	local function nummer(eintrag)
+		-- Zeigt/Entstanden bei tragen eine Q-Nummer, die entscheidet. Kategorien
+		-- sind freier Text; dort vergleicht die Kleinschreibung, damit
+		-- "Berlinale 2026" und "berlinale 2026" eine Zeile bleiben.
+		local q = tostring(eintrag):match('^%s*([Qq]%d+)')
+		if q then return q:upper() end
+		return tostring(eintrag):lower()
+	end
+	local function anhaengen(eintrag)
+		eintrag = tostring(eintrag):gsub('^%s+', ''):gsub('%s+$', '')
+		if eintrag == '' or #neu >= MAX_VERLAUF then return end
+		local n = nummer(eintrag)
+		if gesehen[n] then return end
+		gesehen[n] = true
+		neu[#neu + 1] = eintrag
+	end
+	for teil in liste:gmatch('[^;]+') do anhaengen(teil) end
+	for i = 1, #alt do anhaengen(alt[i]) end
+	MediaWikiSdcData.prefs()[schluessel] = neu
+end
+
 function MediaWikiSdcData.applyResult(catalog, photos, result)
 	-- Remember the interface language the user worked in, so the next call
 	-- opens in the same one.
@@ -487,6 +525,13 @@ function MediaWikiSdcData.applyResult(catalog, photos, result)
 	if type(list) ~= 'table' or list.catalog ~= nil or #list == 0 then
 		list = { photos }
 	end
+
+	-- Verlauf fortschreiben: die gerade benutzten Eintraege wandern nach
+	-- vorn, Dubletten fliegen raus, mehr als MAX_VERLAUF wird abgeschnitten.
+	-- Nur was der Nutzer WIRKLICH ausgewaehlt hat, nichts Geratenes.
+	MediaWikiSdcData.merkeVerlauf('sdcRecentDepicts', result.depicts)
+	MediaWikiSdcData.merkeVerlauf('sdcRecentCreatedDuring', result.createdDuring)
+	MediaWikiSdcData.merkeVerlauf('sdcRecentCategories', result.categories)
 
 	local caps = result.captions
 	local captionEn = type(caps) == 'table' and trim(caps.en or '') or nil
