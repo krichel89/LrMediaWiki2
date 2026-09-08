@@ -388,7 +388,12 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	-- the SDC editor writes one "depicts=" line per QID, because that reads
 	-- far better with inline comments. Taking only the first line would have
 	-- uploaded a single QID and silently dropped the rest.
-	local sdKeys = { 'creator', 'copyright', 'license', 'depicts', 'created_during' }
+	-- event_template holds the Commons template for the event, e.g.
+	-- {{WikiPortraits Venice Film Festival 2026}}. It is extracted like the
+	-- other keys - so it does NOT stay inside the description - and placed
+	-- after the infobox further down, where templates belong.
+	local sdKeys = { 'creator', 'copyright', 'license', 'depicts',
+		'created_during', 'event_template' }
 	for _, key in ipairs(sdKeys) do
 		local values = {}
 		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do
@@ -451,8 +456,16 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	-- default from the export dialog) both go into the same block after the
 	-- infobox – both are just extra wikitext/templates at that position.
 	local otherTemplatesBlock = ''
+	-- The event template comes first: it says what the picture belongs to,
+	-- and on a file page that reads better above the generic templates.
+	if MediaWikiUtils.isStringFilled(structuredData.event_template) then
+		otherTemplatesBlock = MediaWikiUtils.trim(structuredData.event_template)
+	end
 	if MediaWikiUtils.isStringFilled(exportFields.info_templates) then
-		otherTemplatesBlock = exportFields.info_templates
+		if otherTemplatesBlock ~= '' then
+			otherTemplatesBlock = otherTemplatesBlock .. '\n'
+		end
+		otherTemplatesBlock = otherTemplatesBlock .. exportFields.info_templates
 	end
 	if MediaWikiUtils.isStringFilled(exportFields.other_fields) then
 		if otherTemplatesBlock ~= '' then

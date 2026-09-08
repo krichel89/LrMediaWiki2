@@ -151,6 +151,40 @@ function MediaWikiApi.parseXmlDom(xmlDomInstance)
 	return value
 end
 
+-- Wikimedia answers with 503 (and sometimes 502/504 or 429) when a server is
+-- busy or being restarted. Those are TEMPORARY: the very same request usually
+-- succeeds a few seconds later. Until 2.0.72 the first one aborted the whole
+-- export, which hit colleagues on long batches.
+--
+-- Waits between attempts, in seconds. Retry-After from the server wins if it
+-- names a longer wait.
+local WIEDERHOLBAR = { [429] = true, [500] = true, [502] = true,
+                       [503] = true, [504] = true }
+local WARTEN = { 3, 8, 20 }
+
+-- NO pcall anywhere near this: LrTasks.sleep pauses, and a pause cannot cross
+-- a C call. Returns true if the caller should try again.
+local function nochmalVersuchen(status, headers, versuch)
+	if not WIEDERHOLBAR[tonumber(status) or 0] then return false end
+	if versuch > #WARTEN then return false end
+	local warten = WARTEN[versuch]
+	-- Retry-After kommt als Sekundenzahl; ein Datum lassen wir liegen und
+	-- bleiben dann bei unserer eigenen Wartezeit.
+	if type(headers) == 'table' then
+		for _, h in ipairs(headers) do
+			if type(h) == 'table' and type(h.field) == 'string'
+			   and h.field:lower() == 'retry-after' then
+				local sek = tonumber(tostring(h.value or ''):match('^%s*(%d+)%s*$'))
+				if sek and sek > warten and sek <= 120 then warten = sek end
+			end
+		end
+	end
+	MediaWikiUtils.trace('HTTP ' .. tostring(status) .. ' - the server is busy; '
+		.. 'waiting ' .. warten .. ' s, then attempt ' .. (versuch + 1))
+	LrTasks.sleep(warten)
+	return true
+end
+
 function MediaWikiApi.performHttpRequest(path, arguments, requestHeaders, post)
 	local requestBody = MediaWikiApi.createRequestBody(arguments)
 
@@ -161,16 +195,19 @@ function MediaWikiApi.performHttpRequest(path, arguments, requestHeaders, post)
 	MediaWikiUtils.trace(redactedArguments(arguments));
 
 	local resultBody, resultHeaders
-	if post then
-		resultBody, resultHeaders = LrHttp.post(path, requestBody, requestHeaders)
-	else
-		resultBody, resultHeaders = LrHttp.get(path .. '?' .. requestBody, requestHeaders)
-	end
+	local versuch = 0
+	repeat
+		versuch = versuch + 1
+		if post then
+			resultBody, resultHeaders = LrHttp.post(path, requestBody, requestHeaders)
+		else
+			resultBody, resultHeaders = LrHttp.get(path .. '?' .. requestBody, requestHeaders)
+		end
+		MediaWikiUtils.trace('Result status:');
+		MediaWikiUtils.trace(resultHeaders and resultHeaders.status);
+	until not (resultHeaders and nochmalVersuchen(resultHeaders.status, resultHeaders, versuch))
 
-	MediaWikiUtils.trace('Result status:');
-	MediaWikiUtils.trace(resultHeaders.status);
-
-	if not resultHeaders.status then
+	if not resultHeaders or not resultHeaders.status then
 		LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Api/NoConnection=No network connection."))
 	elseif resultHeaders.status ~= 200 then
 		MediaWikiApi.httpError(resultHeaders.status)
@@ -665,9 +702,24 @@ function MediaWikiApi.upload(fileName, sourceFilePath, text, comment, ignoreWarn
 			contentType = 'application/octet-stream',
 		}
 
-		local resultBody, resultHeaders = LrHttp.postMultipart(MediaWikiApi.apiPath, requestBody, requestHeaders)
+		-- Dieselbe Wiederholung wie bei den gewoehnlichen Anfragen. Ein
+		-- erneuter Upload derselben Datei ist unbedenklich: der Dateiname
+		-- steht fest, im schlimmsten Fall wird dieselbe Fassung noch einmal
+		-- geschrieben statt eine zweite Datei angelegt.
+		local resultBody, resultHeaders
+		local netzVersuch = 0
+		repeat
+			netzVersuch = netzVersuch + 1
+			resultBody, resultHeaders = LrHttp.postMultipart(
+				MediaWikiApi.apiPath, requestBody, requestHeaders)
+			MediaWikiUtils.trace('Upload result status:')
+			MediaWikiUtils.trace(resultHeaders and resultHeaders.status)
+		until not (resultHeaders
+			and nochmalVersuchen(resultHeaders.status, resultHeaders, netzVersuch))
 
-		if resultHeaders.status ~= 200 then
+		if not resultHeaders or not resultHeaders.status then
+			LrErrors.throwUserError(LOC("$$$/LrMediaWiki/Api/NoConnection=No network connection."))
+		elseif resultHeaders.status ~= 200 then
 			MediaWikiApi.httpError(resultHeaders.status)
 		end
 

@@ -1,3 +1,12 @@
+-- Menu titles are localised. LOC is available inside Lightroom, but NOT when
+-- Info.lua is loaded by the check script in plain Lua - and a nil call here
+-- would break loading of the whole plug-in. So the call is guarded and falls
+-- back to the English default that stands behind the "=" in the key.
+local function menuTitle(key)
+	if type(LOC) == 'function' then return LOC(key) end
+	return (key:match('=(.*)$') or key)
+end
+
 -- This file is part of the LrMediaWiki project and distributed under the terms
 -- of the MIT license (see LICENSE.txt file in the project root directory or
 -- [0]).  See [1] for more information about LrMediaWiki.
@@ -43,21 +52,25 @@ return {
 
 	LrPluginInfoUrl = 'https://github.com/krichel89/LrMediaWiki2',
 
+	-- Menu titles go through LOC: English is the base form, the German
+	-- wording lives in TranslatedStrings_de.txt. Lightroom then shows each
+	-- entry in the language the application runs in, instead of the fixed
+	-- mixture of English and German that stood here until 2.0.72.
 	-- Same tools additionally in the Library menu (Bibliothek >
 	-- Zusatzmoduloptionen), one menu closer to metadata work. The titles are
 	-- identical to the File-menu entries on purpose, so a macOS app shortcut
 	-- bound to the title triggers the same script from either menu.
 	LrLibraryMenuItems = {
 		{
-			title = "🌐 Edit Structured Data in browser",
+			title = menuTitle "$$$/LrMediaWiki/Menu/EditSdcWeb=🌐 Edit Structured Data in browser",
 			file = "ToolEditSdcWeb.lua",
 		},
 		{
-			title = "🔁 Description fields ↔ Wikitext",
+			title = menuTitle "$$$/LrMediaWiki/Menu/ConvertDescriptionAll=🔁 Description fields ↔ Wikitext",
 			file = "ToolConvertDescriptionAll.lua",
 		},
 		{
-			title = "🔌 Hintergrund-App (SDC-Brücke)",
+			title = menuTitle "$$$/LrMediaWiki/Menu/SdcBridge=🔌 Background app (SDC bridge)",
 			file = "ToolSdcBridge.lua",
 		},
 	},
@@ -67,35 +80,35 @@ return {
 	-- shortest possible pointer path.
 	LrExportMenuItems = {
 		{
-			title = "🌐 Edit Structured Data in browser",
+			title = menuTitle "$$$/LrMediaWiki/Menu/EditSdcWeb=🌐 Edit Structured Data in browser",
 			file = "ToolEditSdcWeb.lua",
 		},
 		{
-			title = "🔁 Description fields ↔ Wikitext",
+			title = menuTitle "$$$/LrMediaWiki/Menu/ConvertDescriptionAll=🔁 Description fields ↔ Wikitext",
 			file = "ToolConvertDescriptionAll.lua",
 		},
 		{
-			title = "🔌 Hintergrund-App (SDC-Brücke)",
+			title = menuTitle "$$$/LrMediaWiki/Menu/SdcBridge=🔌 Background app (SDC bridge)",
 			file = "ToolSdcBridge.lua",
 		},
 		{
-			title = "🔍 Search and Replace Metadata",
+			title = menuTitle "$$$/LrMediaWiki/Menu/SearchReplaceMetadata=🔍 Search and Replace Metadata",
 			file = "ToolSearchAndReplaceMetadata.lua",
 		},
 		{
-			title = "🔎 Search and Replace Filename",
+			title = menuTitle "$$$/LrMediaWiki/Menu/SearchReplaceFilename=🔎 Search and Replace Filename",
 			file = "ToolSearchAndReplaceFilename.lua",
 		},
 		{
-			title = "🚀 Generate filename and description from persons",
+			title = menuTitle "$$$/LrMediaWiki/Menu/GenerateFromPersons=🚀 Generate filename and description from persons",
 			file = "ToolGenerateFromPersons.lua",
 		},
 		{
-			title = "📄 Set title to file prefix and headline",
+			title = menuTitle "$$$/LrMediaWiki/Menu/TitlePrefixHeadline=📄 Set title to file prefix and headline",
 			file = "ToolSetTitleToPrefixAndHeadline.lua",
 		},
 		{
-			title = "📄 Set title to file prefix and caption",
+			title = menuTitle "$$$/LrMediaWiki/Menu/TitlePrefixCaption=📄 Set title to file prefix and caption",
 			file = "ToolSetTitleToPrefixAndCaption.lua",
 		},
 		--[[
@@ -114,6 +127,6 @@ return {
 	VERSION = {
 		major = 2,
 		minor = 0,
-		revision = 71,
+		revision = 73,
 	},
 }

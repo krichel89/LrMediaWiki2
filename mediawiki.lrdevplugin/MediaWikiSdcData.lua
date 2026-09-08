@@ -61,7 +61,7 @@ MediaWikiSdcData.isHeading = isHeading
 local function parseDescriptionAll(text)
 	text = text or ''
 	text = text:gsub('\r\n', '\n'):gsub('\r', '\n')
-	local captions, depicts, createdDuring = {}, '', ''
+	local captions, depicts, createdDuring, eventTemplate = {}, '', '', ''
 	local freeLines = {}
 	for line in (text .. '\n'):gmatch('(.-)\n') do
 		local handled = isHeading(line)
@@ -83,11 +83,23 @@ local function parseDescriptionAll(text)
 				handled = true
 			end
 		end
+		if not handled then
+			-- Vorlage der Veranstaltung, z. B.
+			-- {{WikiPortraits Venice Film Festival 2026}}. Sie steht als
+			-- eigener Schluessel im Block, damit sie beim Hochladen NICHT in
+			-- der Beschreibung landet, sondern hinter der Infobox.
+			local ev = line:match('^event_template=(.*)$')
+			if ev then
+				ev = trim(ev)
+				if ev ~= '' then eventTemplate = ev end
+				handled = true
+			end
+		end
 		if not handled then freeLines[#freeLines + 1] = line end
 	end
 	while #freeLines > 0 and trim(freeLines[#freeLines]) == '' do table.remove(freeLines) end
 	while #freeLines > 0 and trim(freeLines[1]) == '' do table.remove(freeLines, 1) end
-	return captions, depicts, createdDuring, table.concat(freeLines, '\n')
+	return captions, depicts, createdDuring, table.concat(freeLines, '\n'), eventTemplate
 end
 
 local function injectPayload(html, jsonText)
@@ -398,7 +410,7 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 	local categories = photo:getPropertyForPlugin(_PLUGIN, 'categories') or ''
 	local depictsField = photo:getPropertyForPlugin(_PLUGIN, 'depicts') or ''
 	local createdField = photo:getPropertyForPlugin(_PLUGIN, 'created_during') or ''
-	local captions, depicts, createdDuring, freetext = parseDescriptionAll(descAll)
+	local captions, depicts, createdDuring, freetext, eventTemplate = parseDescriptionAll(descAll)
 	local captionEn = photo:getPropertyForPlugin(_PLUGIN, 'caption_en') or ''
 	if filled(captionEn) and not filled(captions.en) then captions.en = captionEn end
 	return {
@@ -436,6 +448,7 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 		categories = categories,
 		captions = captions,
 		freetext = freetext,
+		eventTemplate = eventTemplate,
 		-- Gelernte Fuegungen fuer den Satzbau. Gehen mit und kommen mit dem
 		-- Ergebnis zurueck; die Seite darf sie nicht selbst dauerhaft halten,
 		-- weil ihre Herkunft bei jedem Start der Bruecke einen neuen Port
@@ -447,6 +460,7 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 			depicts = MediaWikiSdcData.prefs().sdcRecentDepicts or {},
 			createdDuring = MediaWikiSdcData.prefs().sdcRecentCreatedDuring or {},
 			categories = MediaWikiSdcData.prefs().sdcRecentCategories or {},
+			eventTemplate = MediaWikiSdcData.prefs().sdcRecentEventTemplate or {},
 		},
 		connectors = MediaWikiSdcData.prefs().sdcConnectors or {},
 		-- Gelernte Anzeigeformen (gebeugte Fassung des Veranstaltungsnamens).
@@ -532,49 +546,30 @@ function MediaWikiSdcData.applyResult(catalog, photos, result)
 	MediaWikiSdcData.merkeVerlauf('sdcRecentDepicts', result.depicts)
 	MediaWikiSdcData.merkeVerlauf('sdcRecentCreatedDuring', result.createdDuring)
 	MediaWikiSdcData.merkeVerlauf('sdcRecentCategories', result.categories)
+	MediaWikiSdcData.merkeVerlauf('sdcRecentEventTemplate', result.eventTemplate)
 
 	local caps = result.captions
 	local captionEn = type(caps) == 'table' and trim(caps.en or '') or nil
 
-	-- Welche Felder darf ein Foto bekommen, das NICHT das aktive war?
-	-- Nur die, die der Nutzer seit dem Oeffnen angefasst hat. Sonst truege
-	-- der Haken "auf alle markierten" auch unberuehrte Felder weiter und
-	-- ueberschriebe auf den anderen Fotos, was dort richtig stand.
-	-- Fehlt die Angabe (aeltere Seite), gilt wie frueher: alles.
-	local changed = type(result.changed) == 'table' and result.changed or nil
-	local function darf(feld)
-		if changed == nil then return true end
-		return changed[feld] == true
-	end
-
-	-- Das aktive Foto bekommt IMMER den vollen Satz. Welches das ist, wird
-	-- HIER bestimmt - vor withWriteAccessDo, weil photoKey den Katalog liest
-	-- und pausierende Aufrufe nicht in den Schreibblock gehoeren.
-	local sourceKey = trim(result.photoKey or '')
-	local istQuelle = {}
-	for i = 1, #list do
-		istQuelle[i] = (sourceKey ~= '')
-			and (MediaWikiSdcData.photoKey(list[i]) == sourceKey)
-	end
-
+	-- Der Haken "auf alle markierten" verteilt den GANZEN Feldsatz, nicht
+	-- nur die im Editor geaenderten Felder (Ansage Harald 02.09.2026).
+	--
+	-- 2.0.68 hatte es umgekehrt gemacht, um bei drei verschiedenen Motiven
+	-- nichts zu ueberschreiben. Das war zu streng: wer den Editor oeffnet,
+	-- nichts aendert und speichert, wollte damit den vorhandenen Satz des
+	-- aktiven Fotos auf die uebrigen uebertragen - und bekam nichts. Die
+	-- Angabe result.changed kommt weiter aus der Seite und wird bewusst
+	-- NICHT mehr ausgewertet; sie bleibt fuer den Fall, dass die feinere
+	-- Regel je zurueckkehrt.
 	catalog:withWriteAccessDo('LrMediaWiki: SDC aus dem Browser', function()
 		for i = 1, #list do
 			local p = list[i]
 			if p then
-				local voll = istQuelle[i]
-				if voll or darf('wikitext') then
-					p:setPropertyForPlugin(_PLUGIN, 'description_all', trim(result.wikitext or ''))
-				end
-				if voll or darf('categories') then
-					p:setPropertyForPlugin(_PLUGIN, 'categories', trim(result.categories or ''))
-				end
-				if voll or darf('depicts') then
-					p:setPropertyForPlugin(_PLUGIN, 'depicts', trim(result.depicts or ''))
-				end
-				if voll or darf('createdDuring') then
-					p:setPropertyForPlugin(_PLUGIN, 'created_during', trim(result.createdDuring or ''))
-				end
-				if captionEn ~= nil and (voll or darf('captions')) then
+				p:setPropertyForPlugin(_PLUGIN, 'description_all', trim(result.wikitext or ''))
+				p:setPropertyForPlugin(_PLUGIN, 'categories', trim(result.categories or ''))
+				p:setPropertyForPlugin(_PLUGIN, 'depicts', trim(result.depicts or ''))
+				p:setPropertyForPlugin(_PLUGIN, 'created_during', trim(result.createdDuring or ''))
+				if captionEn ~= nil then
 					p:setPropertyForPlugin(_PLUGIN, 'caption_en', captionEn)
 				end
 			end
