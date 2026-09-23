@@ -89,6 +89,22 @@ local function tempDir()
 	return dir
 end
 
+-- Ein Wert, der sicher in eine Unix-Shell-Zeile passt. Einfache
+-- Anfuehrungszeichen schuetzen alles ausser dem einfachen Anfuehrungszeichen
+-- selbst; das wird ausgeschlossen, ein escaptes angehaengt und wieder
+-- geoeffnet ('\''). Keine Zeichenkette aus einem Pfad geht ungequotet in
+-- LrTasks.execute - Pfade kommen aus Nutzerordnern und duerfen $, `, Leer-
+-- und Sonderzeichen enthalten.
+--
+-- Steht bewusst GANZ OBEN: ein `local function` ist erst ab seiner
+-- Definitionszeile sichtbar, ein Aufruf darueber waere ein stiller
+-- nil-Griff (Pruefstufe 4c wacht darueber).
+local function shellQuote(s)
+	local text = tostring(s or '')
+	local escaped = text:gsub("'", "'\\''")
+	return "'" .. escaped .. "'"
+end
+
 -- Architektur des Macs, einmal ermittelt und gemerkt.
 --
 -- Es gibt keinen dokumentierten SDK-Aufruf dafuer, also `uname -m`. Das
@@ -98,7 +114,7 @@ local macArch = nil
 local function detectMacArch()
 	if macArch ~= nil then return macArch end
 	local out = LrPathUtils.child(tempDir(), 'lrmediawiki2-sdc-arch.txt')
-	LrTasks.execute('/usr/bin/uname -m > "' .. out .. '" 2>/dev/null')
+	LrTasks.execute('/usr/bin/uname -m > ' .. shellQuote(out) .. ' 2>/dev/null')
 	-- Bewusst mit io.* statt mit readFile(): readFile wird weiter unten in
 	-- dieser Datei definiert und waere hier oben noch nicht sichtbar. Ein
 	-- `local function` gilt erst ab seiner Definition - der Aufruf waere ein
@@ -292,7 +308,18 @@ local function launch(bin, token, page, portFile, logFile)
 		return true, nil, code
 	end
 
-	local cmd = '"' .. bin .. '"' .. args .. ' >/dev/null 2>&1 &'
+	-- Unix: EINFACHE Anfuehrungszeichen, und ein enthaltenes ' wird
+	-- ausgeschlossen und wieder angehaengt ('\''). Mit doppelten
+	-- Anfuehrungszeichen wuerde die Shell $ und ` im Pfad auswerten - und
+	-- das Zusatzmodul darf in einem Ordner liegen, den der Nutzer benannt
+	-- hat. Ein Ordner "Fotos $(whoami)" oder "Haralds Sachen" ist auf dem
+	-- Mac erlaubt; beides waere sonst ein offener Weg in die Shell.
+	local macArgs = ' --token=' .. shellQuote(token)
+		.. ' --page=' .. shellQuote(page)
+		.. ' --portfile=' .. shellQuote(portFile)
+		.. ' --log=' .. shellQuote(logFile)
+		.. ' --idle=' .. IDLE_TIMEOUT
+	local cmd = shellQuote(bin) .. macArgs .. ' >/dev/null 2>&1 &'
 	local code = LrTasks.execute(cmd)
 	return true, nil, code
 end

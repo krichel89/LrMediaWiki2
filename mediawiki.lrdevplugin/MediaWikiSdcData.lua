@@ -478,16 +478,41 @@ local MAX_VERLAUF = 8
 -- Fuegt die Eintraege aus einer Semikolon-Liste vorn in den Verlauf ein.
 -- Vergleich ueber die Q-Nummer, damit derselbe Eintrag mit anderer
 -- Beschriftung nicht doppelt erscheint.
+-- Art des Wertes, den ein Verlauf fuehrt. Frueher galt fuer alle vier
+-- Verlaeufe dieselbe Regel, und das war an zwei Stellen falsch:
+--
+--   * Die Q-Nummer am Anfang entschied ueber Dubletten - auch bei
+--     KATEGORIEN. "Q1 Tower, Gold Coast" und "Q1 Building" sind beides
+--     echte Commons-Kategorien; sie galten als derselbe Eintrag, und einer
+--     verschwand aus dem Verlauf.
+--   * Getrennt wurde immer am Semikolon - auch bei der VORLAGE der
+--     Veranstaltung, die ein EINZELWERT ist. Ein Semikolon in einem
+--     Vorlagenparameter zerlegte sie in zwei Verlaufszeilen.
+--
+-- 'qid'   = Liste mit Q-Nummern (Zeigt, Entstanden bei)
+-- 'liste' = Liste freien Textes  (Kategorien)
+-- 'wert'  = ein einzelner Wert   (Vorlage der Veranstaltung)
+local VERLAUFSART = {
+	sdcRecentDepicts       = 'qid',
+	sdcRecentCreatedDuring = 'qid',
+	sdcRecentCategories    = 'liste',
+	sdcRecentEventTemplate = 'wert',
+}
+
 function MediaWikiSdcData.merkeVerlauf(schluessel, liste)
 	if type(liste) ~= 'string' or liste == '' then return end
+	local art = VERLAUFSART[schluessel] or 'liste'
 	local alt = MediaWikiSdcData.prefs()[schluessel] or {}
 	local neu, gesehen = {}, {}
 	local function nummer(eintrag)
-		-- Zeigt/Entstanden bei tragen eine Q-Nummer, die entscheidet. Kategorien
-		-- sind freier Text; dort vergleicht die Kleinschreibung, damit
+		-- Nur wo wirklich Q-Nummern stehen, entscheidet die Nummer: dieselbe
+		-- Nummer mit anderer Beschriftung ist derselbe Eintrag. Sonst
+		-- vergleicht die Kleinschreibung des ganzen Textes, damit
 		-- "Berlinale 2026" und "berlinale 2026" eine Zeile bleiben.
-		local q = tostring(eintrag):match('^%s*([Qq]%d+)')
-		if q then return q:upper() end
+		if art == 'qid' then
+			local q = tostring(eintrag):match('^%s*([Qq]%d+)')
+			if q then return q:upper() end
+		end
 		return tostring(eintrag):lower()
 	end
 	local function anhaengen(eintrag)
@@ -498,7 +523,11 @@ function MediaWikiSdcData.merkeVerlauf(schluessel, liste)
 		gesehen[n] = true
 		neu[#neu + 1] = eintrag
 	end
-	for teil in liste:gmatch('[^;]+') do anhaengen(teil) end
+	if art == 'wert' then
+		anhaengen(liste)
+	else
+		for teil in liste:gmatch('[^;]+') do anhaengen(teil) end
+	end
 	for i = 1, #alt do anhaengen(alt[i]) end
 	MediaWikiSdcData.prefs()[schluessel] = neu
 end
