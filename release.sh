@@ -30,6 +30,10 @@
 #                              --team-id … --password <app-spezifisches-Kennwort>
 #   ODER die drei Einzelwerte:
 #   LRMW_NOTARY_APPLE_ID   LRMW_NOTARY_PASSWORD   LRMW_NOTARY_TEAM_ID
+#   LRMW_NOTARY_HOURS      wie lange auf Apples Urteil gewartet wird,
+#                          Vorgabe 4 Stunden. Laeuft die Zeit ab, wird
+#                          gefragt statt abgebrochen: die Datei ist dann
+#                          signiert, nur eben noch nicht angenommen.
 #   Ohne Notarisierungsdaten wird nur signiert - das reicht Gatekeeper NICHT.
 #
 # SIGNIEREN, Windows (einer der drei Wege):
@@ -63,7 +67,7 @@ while [ $# -gt 0 ]; do
 		--skip-tests) SKIPTEST=1 ;;
 		--skip-sign)  SKIPSIGN=1 ;;
 		--skip-pack)  SKIPPACK=1 ;;
-		--help|-h)    sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		--help|-h)    sed -n '2,54p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "Unbekannte Option: $1" >&2; exit 2 ;;
 	esac
 	shift
@@ -272,28 +276,82 @@ notarisiere_mac() {
 	else
 		zip -j -q "$NOTARZIP" "$MACBIN"
 	fi
-	info "Notarisierung laeuft - das dauert ueblicherweise einige Minuten."
+	# Zugangsdaten einmal bauen, danach immer gleich benutzt.
 	if [ -n "${LRMW_NOTARY_PROFILE:-}" ]; then
-		xcrun notarytool submit "$NOTARZIP" \
-			--keychain-profile "$LRMW_NOTARY_PROFILE" --wait > "$LOG" 2>&1 \
-			&& NOTAR=ja || NOTAR=nein
+		NAUTH=(--keychain-profile "$LRMW_NOTARY_PROFILE")
 	else
-		xcrun notarytool submit "$NOTARZIP" \
-			--apple-id "$LRMW_NOTARY_APPLE_ID" \
-			--password "$LRMW_NOTARY_PASSWORD" \
-			--team-id  "$LRMW_NOTARY_TEAM_ID" --wait > "$LOG" 2>&1 \
-			&& NOTAR=ja || NOTAR=nein
+		NAUTH=(--apple-id "$LRMW_NOTARY_APPLE_ID"
+		       --password "$LRMW_NOTARY_PASSWORD"
+		       --team-id  "$LRMW_NOTARY_TEAM_ID")
 	fi
-	# notarytool meldet auch bei Status "Invalid" den Rueckgabewert 0, wenn
-	# die Einreichung als solche geklappt hat - deshalb zusaetzlich auf das
-	# Wort Accepted sehen.
-	if [ "$NOTAR" = ja ] && grep -qi 'status: *Accepted' "$LOG"; then
+
+	# KEIN --wait. Zwei teuer gelernte Gruende: ein einziger Netzhaenger
+	# toetet den ganzen Aufruf (bei Cammello NSURLError -1001 nach 27
+	# Minuten), und Apples Warteschlange hat dort einmal rund fuenfeinhalb
+	# Stunden gebraucht. Also einreichen und danach selbst nachfragen.
+	info "Einreichung laeuft."
+	if ! xcrun notarytool submit "$NOTARZIP" "${NAUTH[@]}" > "$LOG" 2>&1; then
+		tail -20 "$LOG" | sed 's/^/     /' || true
+		warn "Die Einreichung hat nicht geklappt."
+		frage "Trotzdem weiter (das Paket ist dann nicht notarisiert)?" \
+			|| ende "auf Zuruf"
+		rm -rf "$NOTARDIR"; NOTARZIP=""; NOTARDIR=""
+		return 0
+	fi
+	NID=$(sed -n 's/^ *id: *\([0-9a-fA-F][0-9a-fA-F-]\{30,\}\).*/\1/p' "$LOG" | head -1)
+	if [ -z "$NID" ]; then
+		tail -20 "$LOG" | sed 's/^/     /' || true
+		warn "Keine Submission-ID im Protokoll gefunden."
+		frage "Trotzdem weiter (das Paket ist dann nicht notarisiert)?" \
+			|| ende "auf Zuruf"
+		rm -rf "$NOTARDIR"; NOTARZIP=""; NOTARDIR=""
+		return 0
+	fi
+	info "Submission-ID: $NID"
+	info "Das kann Minuten dauern, im schlechten Fall Stunden. Abbrechen ist"
+	info "ungefaehrlich - nachsehen spaeter mit:"
+	info "  xcrun notarytool info $NID ${LRMW_NOTARY_PROFILE:+--keychain-profile $LRMW_NOTARY_PROFILE}"
+
+	# Wartezeit in Stunden, notfalls ueberschreibbar.
+	NSTUNDEN="${LRMW_NOTARY_HOURS:-4}"
+	NENDE=$(( $(date +%s) + NSTUNDEN * 3600 ))
+	NFEHLER=0
+	NSTATUS=""
+	while [ "$(date +%s)" -lt "$NENDE" ]; do
+		sleep 30
+		if NAUS=$(xcrun notarytool info "$NID" "${NAUTH[@]}" 2>&1); then
+			NFEHLER=0
+			NSTATUS=$(printf '%s\n' "$NAUS" | sed -n 's/^ *status: *//p' | head -1)
+			printf '   %s  %s\n' "$(date +%H:%M:%S)" "${NSTATUS:-?}"
+			case "$NSTATUS" in
+				Accepted) break ;;
+				Invalid|Rejected)
+					warn "Apple hat die Datei ABGELEHNT - das ist ein echter Befund."
+					xcrun notarytool log "$NID" "${NAUTH[@]}" 2>&1 \
+						| tail -30 | sed 's/^/     /' || true
+					break ;;
+			esac
+		else
+			# Netz- oder Dienstfehler. Erst nach rund 15 Minuten
+			# Unerreichbarkeit aufgeben, nicht beim ersten Aussetzer.
+			NFEHLER=$(( NFEHLER + 1 ))
+			printf '   Abfrage fehlgeschlagen (%d)\n' "$NFEHLER"
+			if [ "$NFEHLER" -ge 30 ]; then
+				warn "Der Notardienst ist seit etwa 15 Minuten nicht erreichbar."
+				break
+			fi
+		fi
+	done
+
+	if [ "$NSTATUS" = Accepted ]; then
+		NOTAR=ja
 		gut "notarisiert (Ticket liegt bei Apple, kein Heften moeglich)"
 	else
 		NOTAR=nein
-		tail -20 "$LOG" | sed 's/^/     /' || true
-		warn "Die Notarisierung ist nicht durchgegangen."
-		warn "Protokoll holen: xcrun notarytool log <id> --keychain-profile <profil>"
+		warn "Die Notarisierung ist nicht (oder noch nicht) durchgegangen."
+		warn "Stand: ${NSTATUS:-unbekannt}. Nachsehen: xcrun notarytool info $NID"
+		warn "Das Programm ist signiert; sobald Apple annimmt, kommt es bei"
+		warn "Nutzern mit Internet durch Gatekeeper - ohne neues Paket."
 		frage "Trotzdem weiter (das Paket ist dann nicht notarisiert)?" \
 			|| ende "auf Zuruf"
 	fi
@@ -486,7 +544,18 @@ if [ -n "$REMOTE" ] && [ "$DRYRUN" = 0 ]; then
 			warn "Lage ansehen:  git log --oneline --graph --all | head -20"
 			ende "Push abgelehnt."
 		fi
-		git push origin --tags || warn "Die Tags gingen nicht durch."
+		# NUR den neuen Tag schieben, nicht --tags. Mit --tags wandern ALLE
+		# lokalen Tags mit; weicht auch nur einer von seinem Gegenstueck auf
+		# origin ab, lehnt Git den ganzen Befehl ab ("already exists") und der
+		# neue Tag sieht wie ein Fehlschlag aus, obwohl er laengst durch ist.
+		if [ "$TAGDA" = 0 ]; then
+			if git push origin "refs/tags/$TAG"; then
+				gut "Tag $TAG gepusht"
+			else
+				warn "Der Tag $TAG ging nicht durch. Liegt er schon auf origin?"
+				warn "Nachsehen:  git ls-remote --tags origin $TAG"
+			fi
+		fi
 		gut "gepusht"
 		info "Ist der Workflow release.yml eingerichtet, baut GitHub jetzt selbst."
 		if [ "$SIG_MAC" = ja ] || [ "$SIG_WIN" = ja ]; then
@@ -512,6 +581,10 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 	fi
 	if [ ! -s "$NOTIZ" ]; then
 		warn "Kein Abschnitt \"## Version $VERSION\" in SDC-CHANGES.md."
+		warn "Das Release bekaeme dann nur die nackte Versionsnummer als Text."
+		warn "Haeufigste Ursache: es wurde nur mediawiki.lrdevplugin/ ersetzt,"
+		warn "die Datei SDC-CHANGES.md im Wurzelverzeichnis ist noch die alte."
+		frage "Trotzdem ohne Notizen weitermachen?" || ende "auf Zuruf"
 		printf 'LrMediaWiki2 %s\n' "$VERSION" > "$NOTIZ"
 	else
 		info "Notizen: $(wc -c < "$NOTIZ" | tr -d ' ') Zeichen"
@@ -531,7 +604,7 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 			if frage "Die hier gebauten Pakete trotzdem anhaengen?"; then
 				gh release upload "$TAG" --repo "$GHREPO" --clobber \
 					"$NUTZER#LrMediaWiki2-$VERSION.zip" \
-					"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
+					"$VOLL#LrMediaWiki2-complete-$VERSION.zip with source code"
 				gut "Pakete ersetzt"
 			else
 				info "Unveraendert gelassen."
@@ -540,7 +613,7 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 			gh release create "$TAG" --repo "$GHREPO" \
 				--title "LrMediaWiki2 $VERSION" --notes-file "$NOTIZ" \
 				"$NUTZER#LrMediaWiki2-$VERSION.zip" \
-				"$VOLL#LrMediaWiki2-complete-$VERSION.zip mit Quelltext"
+				"$VOLL#LrMediaWiki2-complete-$VERSION.zip with source code"
 			gut "Release angelegt"
 		fi
 		# Ein Entwurf waere unsichtbar - siehe 2.0.50.

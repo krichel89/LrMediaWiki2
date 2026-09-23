@@ -1,12 +1,19 @@
 name: Release
 
 # Laeuft, wenn ein Tag vX.Y.Z gepusht wird, und legt das GitHub-Release mit
-# beiden Paketen an.
+# beiden Paketen an. Ohne Tag (workflow_dispatch) wird gebaut, signiert und
+# notarisiert, aber KEIN Release angelegt - die Pakete haengen dann am Lauf.
+# Genau dafuer ist der Weg ohne Tag gedacht: die Signierkette einmal in Ruhe
+# ausprobieren, bevor ein Release daran haengt.
 #
 # WARUM macOS ALS LAEUFER: nur dort gibt es `lipo`, und nur damit entsteht die
 # universelle Mac-Fassung der Hintergrund-App, die auf Apple Silicon und Intel
 # laeuft. Go selbst kreuzkompiliert die Windows-Fassung auf demselben Laeufer
 # gleich mit.
+#
+# REIHENFOLGE: erst baue-bruecke.sh (dort fuehrt lipo die beiden Scheiben
+# zusammen), dann codesign. Andersherum waere die Signatur hinueber - lipo
+# schreibt die Datei neu.
 #
 # SIGNIEREN UND NOTARISIEREN passiert nur, wenn die Geheimnisse gesetzt sind.
 # Ohne sie laeuft alles durch, die Programme sind dann eben unsigniert und
@@ -35,10 +42,15 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
+    # Apples Warteschlange hat bei Cammello einmal rund fuenfeinhalb Stunden
+    # gebraucht. Der Standard waere 360 Minuten; die Notarisierung unten gibt
+    # nach 4 Stunden auf, damit der Lauf davor noch zu Ende kommt.
+    timeout-minutes: 350
     env:
       # Auf JOB-Ebene, damit der Wert im "if" eines Schrittes sichtbar ist -
       # der eigene env-Block eines Schrittes ist das nicht.
       HAT_ZERTIFIKAT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      HAT_NOTAR: ${{ secrets.MACOS_NOTARY_APPLE_ID != '' }}
       HAT_WIN_SIGN: ${{ secrets.WIN_SIGN_CMD != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -92,48 +104,122 @@ jobs:
           fi
           file "$B/sdcbridge-win-amd64.exe"
 
-      - name: Signieren und notarisieren
+      # Signieren und Notarisieren sind ABSICHTLICH zwei Schritte. Das
+      # Zertifikat liegt nur im ersten in einem Wegwerf-Schluesselbund, der
+      # am Ende desselben Schrittes wieder verschwindet; die Notarisierung
+      # darunter wartet unter Umstaenden stundenlang und braucht ihn nicht.
+      - name: macOS - Hintergrund-App signieren
         if: env.HAT_ZERTIFIKAT == 'true'
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          B=mediawiki.lrdevplugin/bin
+          KB="$RUNNER_TEMP/build.keychain"
+          # Zufaelliges Kennwort statt eines festen: der Schluesselbund lebt
+          # nur in diesem Schritt, aber es steht auch nichts Festes im Log.
+          KBPW=$(openssl rand -hex 24)
+          security create-keychain -p "$KBPW" "$KB"
+          # Ohne das sperrt sich der Bund nach 5 Minuten Untaetigkeit wieder
+          # zu - lang genug fuer codesign, aber es kostet nichts.
+          security set-keychain-settings -lut 21600 "$KB"
+          security default-keychain -s "$KB"
+          security unlock-keychain -p "$KBPW" "$KB"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KB" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Ohne die Partitionsliste fragt codesign im Lauf nach einem
+          # Kennwort - und da sitzt niemand.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KBPW" "$KB" >/dev/null
+          # Zeigt "1 valid identities found", wenn das Zertifikat sitzt. Das
+          # ist die Zeile, die bei Cammello den Verdacht auf ein falsches
+          # Geheimnis ausgeraeumt hat - sie gehoert ins Log.
+          security find-identity -v -p codesigning "$KB"
+          # Ein Kommandozeilenprogramm braucht die Laufzeitabsicherung
+          # (hardened runtime), sonst lehnt die Notarisierung ab.
+          codesign --force --timestamp --options runtime \
+            --sign "$MACOS_SIGN_IDENTITY" "$B/sdcbridge-mac"
+          codesign --verify --strict --verbose=2 "$B/sdcbridge-mac"
+          # Gegenprobe, dass die universelle Datei beide Scheiben behalten hat.
+          lipo -info "$B/sdcbridge-mac"
+          security delete-keychain "$KB"
+
+      - name: macOS - notarisieren
+        if: env.HAT_ZERTIFIKAT == 'true' && env.HAT_NOTAR == 'true'
+        env:
           MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
           MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
           MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
         run: |
           set -euo pipefail
           B=mediawiki.lrdevplugin/bin
-          # Wegwerf-Schluesselbund, damit nichts im Standardbund liegenbleibt.
-          KB=$RUNNER_TEMP/build.keychain
-          security create-keychain -p act "$KB"
-          security default-keychain -s "$KB"
-          security unlock-keychain -p act "$KB"
-          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KB" \
-            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k act "$KB" >/dev/null
-          # Ein Kommandozeilenprogramm braucht die Laufzeitabsicherung
-          # (hardened runtime), sonst lehnt die Notarisierung ab.
-          codesign --force --timestamp --options runtime \
-            --sign "$MACOS_SIGN_IDENTITY" "$B/sdcbridge-mac"
-          codesign --verify --strict --verbose=2 "$B/sdcbridge-mac"
-          # Notarisiert wird ein ZIP, angeheftet wird danach nichts: an eine
-          # einzelne Binaerdatei laesst sich kein Ticket heften. Gatekeeper
-          # fragt online nach - das genuegt fuer den ersten Start.
-          ditto -c -k --keepParent "$B/sdcbridge-mac" "$RUNNER_TEMP/bridge.zip"
-          # notarytool kann auch bei Status "Invalid" mit Rueckgabewert 0
-          # enden - deshalb zusaetzlich auf das Wort Accepted pruefen, sonst
-          # liefe ein unnotarisiertes Paket gruen durch.
-          xcrun notarytool submit "$RUNNER_TEMP/bridge.zip" \
-            --apple-id "$MACOS_NOTARY_APPLE_ID" \
-            --password "$MACOS_NOTARY_PASSWORD" \
-            --team-id "$MACOS_NOTARY_TEAM_ID" --wait \
-            | tee "$RUNNER_TEMP/notary.log"
-          grep -qi 'status: *Accepted' "$RUNNER_TEMP/notary.log" \
-            || { echo "Notarisierung nicht Accepted." >&2; exit 1; }
-          security delete-keychain "$KB"
+          Z="$RUNNER_TEMP/bridge.zip"
+          # Notarisiert wird ein ZIP, ANGEHEFTET wird danach nichts: an eine
+          # einzelne Binaerdatei laesst sich kein Ticket heften (stapler kann
+          # nur Bundles, DMG und PKG). Gatekeeper fragt beim ersten Start
+          # online nach - das genuegt, sobald Apple angenommen hat.
+          ditto -c -k "$B/sdcbridge-mac" "$Z"
+
+          AUTH=(--apple-id "$MACOS_NOTARY_APPLE_ID"
+                --password "$MACOS_NOTARY_PASSWORD"
+                --team-id  "$MACOS_NOTARY_TEAM_ID")
+
+          # KEIN --wait. Bei Cammello hat ein einziger Netzhaenger den ganzen
+          # Lauf getoetet (NSURLError -1001, "The request timed out"), nachdem
+          # die Einreichung 27 Minuten gelaufen war. Deshalb einreichen und
+          # danach selbst nachfragen - ein Abfragefehler ist dann folgenlos.
+          xcrun notarytool submit "$Z" "${AUTH[@]}" 2>&1 | tee "$RUNNER_TEMP/submit.log"
+          ID=$(sed -n 's/^ *id: *\([0-9a-fA-F][0-9a-fA-F-]\{30,\}\).*/\1/p' \
+                 "$RUNNER_TEMP/submit.log" | head -1)
+          if [ -z "$ID" ]; then
+            echo "Keine Submission-ID im Protokoll - die Einreichung hat nicht geklappt." >&2
+            exit 1
+          fi
+          echo "Submission-ID: $ID"
+          echo "Nachsehen von Hand: xcrun notarytool info $ID --apple-id … --team-id …"
+
+          ENDE=$(( $(date +%s) + 4 * 3600 ))
+          FEHLER=0
+          STATUS=""
+          while [ "$(date +%s)" -lt "$ENDE" ]; do
+            sleep 30
+            if AUSGABE=$(xcrun notarytool info "$ID" "${AUTH[@]}" 2>&1); then
+              FEHLER=0
+              STATUS=$(printf '%s\n' "$AUSGABE" | sed -n 's/^ *status: *//p' | head -1)
+              echo "$(date -u +%H:%M:%S)  $STATUS"
+              case "$STATUS" in
+                Accepted) break ;;
+                Invalid|Rejected)
+                  echo "Apple hat die Datei ABGELEHNT - das ist ein echter Befund." >&2
+                  xcrun notarytool log "$ID" "${AUTH[@]}" || true
+                  exit 1 ;;
+              esac
+            else
+              # Netz- oder Dienstfehler. Erst nach rund 15 Minuten
+              # Unerreichbarkeit aufgeben, nicht beim ersten Aussetzer.
+              FEHLER=$(( FEHLER + 1 ))
+              echo "Abfrage fehlgeschlagen ($FEHLER):"
+              printf '%s\n' "$AUSGABE" | tail -3
+              if [ "$FEHLER" -ge 30 ]; then
+                echo "Der Notardienst ist seit etwa 15 Minuten nicht erreichbar." >&2
+                exit 1
+              fi
+            fi
+          done
+
+          if [ "$STATUS" = Accepted ]; then
+            echo "notarisiert (Ticket liegt bei Apple, Heften ist hier nicht moeglich)"
+          else
+            # Eine Zeitueberschreitung ist NICHT toedlich: die Datei ist
+            # signiert, und sobald Apple sie annimmt, kommt sie bei Nutzern
+            # mit Internet durch Gatekeeper. Ein echtes Urteil (Invalid)
+            # bricht dagegen oben ab.
+            echo "::warning::Notarisierung nach 4 Stunden noch nicht entschieden (Stand: ${STATUS:-unbekannt}). Die Datei ist signiert und wird trotzdem veroeffentlicht. Nachsehen mit: xcrun notarytool info $ID"
+          fi
 
       # Windows-Signierung ueber einen EIGENEN Befehl im Geheimnis
       # WIN_SIGN_CMD - z. B. der CodeSignTool-Aufruf eines Cloud-HSM. Der
@@ -158,6 +244,24 @@ jobs:
 
       - name: Pakete bauen
         run: ./packe.sh dist
+
+      # Gegenprobe NACH dem Packen: die Signatur muss das ZIP ueberleben. Bei
+      # einer Mach-O-Datei steckt sie in der Datei selbst, anders als bei
+      # einem .app-Bundle - aber gesehen haben wollen wir es trotzdem.
+      - name: Signatur im Paket gegenpruefen
+        if: env.HAT_ZERTIFIKAT == 'true'
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          P="$RUNNER_TEMP/pruef"
+          rm -rf "$P"; mkdir -p "$P"
+          unzip -q "dist/LrMediaWiki2-$V.zip" -d "$P"
+          M="$P/mediawiki.lrdevplugin/bin/sdcbridge-mac"
+          [ -f "$M" ] || { echo "sdcbridge-mac fehlt im Nutzerpaket." >&2; exit 1; }
+          codesign --verify --strict --verbose=2 "$M"
+          codesign -dv "$M" 2>&1 | sed -n 's/^\(Authority\|TeamIdentifier\|Timestamp\)=/  &/p' || true
+          [ -x "$M" ] || { echo "Ausfuehrungsbit im Paket verloren." >&2; exit 1; }
+          echo "Signatur im Paket in Ordnung."
 
       - name: Release-Notizen aus SDC-CHANGES.md schneiden
         run: |
@@ -187,7 +291,7 @@ jobs:
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
           NUTZER="dist/LrMediaWiki2-$V.zip#LrMediaWiki2-$V.zip"
-          VOLL="dist/LrMediaWiki2-complete-$V.zip#LrMediaWiki2-complete-$V.zip mit Quelltext"
+          VOLL="dist/LrMediaWiki2-complete-$V.zip#LrMediaWiki2-complete-$V.zip with source code"
           if gh release view "v$V" >/dev/null 2>&1; then
             echo "Release v$V gibt es schon - haenge die Pakete an."
             gh release upload "v$V" --clobber "$NUTZER" "$VOLL"

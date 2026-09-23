@@ -1,5 +1,69 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.0.74
+
+Note: 2.0.73 was published from a working copy that did not yet contain all
+of the changes below, and its release notes were empty. This release carries
+the complete set.
+
+- The macOS background app (SDC bridge) is now signed and notarised on the
+  release runner, so a first start no longer has to be waved past Gatekeeper
+  by hand. Signing needs six repository secrets (MACOS_CERT_P12,
+  MACOS_CERT_PASSWORD, MACOS_SIGN_IDENTITY, MACOS_NOTARY_APPLE_ID,
+  MACOS_NOTARY_PASSWORD, MACOS_NOTARY_TEAM_ID); without them everything runs
+  as before and the programs stay unsigned. No ticket can be stapled to a
+  plain command line binary, so Gatekeeper asks Apple online on first start.
+- Notarisation no longer uses `notarytool submit --wait`, neither in the
+  workflow nor in release.sh. One network hiccup killed the whole call, and
+  Apple's queue has taken more than five hours on a sibling project. Both
+  places now submit, print the submission ID and poll every 30 seconds; a
+  failed query is retried for about 15 minutes before giving up. A verdict of
+  Invalid fails the run, while merely running out of patience does not: the
+  binary is signed either way, and it passes Gatekeeper as soon as Apple
+  accepts it. LRMW_NOTARY_HOURS sets the patience for release.sh, four hours
+  by default.
+- The workflow verifies the signature again after packing, inside the user
+  package, and checks that the execute bit survived the ZIP.
+- release.sh pushes only the NEW tag instead of every local tag. A single
+  local tag that differs from its counterpart on origin made git reject the
+  whole command, so a tag that had in fact gone through looked like a
+  failure.
+- release.sh names the likely cause when the changelog section for the
+  version is missing (usually only mediawiki.lrdevplugin was replaced, so
+  SDC-CHANGES.md in the repository root stayed behind) and asks before
+  creating a release without notes.
+- All menu entries are English now. Two of them ("Hintergrund-App
+  (SDC-Bruecke)") had always been German regardless of the chosen language.
+  A first attempt to route the titles through the localisation files was
+  withdrawn: Info.lua is read in an environment of its own, and the code
+  needed for that kept the plug-in from loading at all.
+- The complete package is labelled "with source code" on the release page
+  instead of the German "mit Quelltext".
+- Release notes are written in English from this version on.
+- "Compose captions" now sits in the captions section, on the left of the
+  same row as "Add a language", which is right-aligned. The button still
+  belongs to the sentence-building section and disappears with it when a
+  workflow hides that section.
+- Temporary server errors no longer abort an export. Wikimedia answers with
+  503 (sometimes 502, 504 or 429) when a server is busy or restarting; the
+  same request usually succeeds seconds later. Requests and uploads are now
+  repeated up to three times, waiting 3, 8 and 20 seconds, and a longer
+  Retry-After from the server is honoured. Permanent errors such as 400 or
+  404 are not repeated.
+- New field "Event template" in the browser editor: the Commons template for
+  the event, e.g. {{WikiPortraits Venice Film Festival 2026}}. It is stored
+  as its own key, so on upload it lands after the infobox where templates
+  belong - not inside the description. Braces are added when missing, and the
+  field keeps a history like the other fields.
+
+## Version 2.0.72
+
+- „Auf alle markierten Fotos" verteilt wieder den GANZEN Feldsatz, nicht nur
+  die im Editor geänderten Felder. Die feinere Regel aus 2.0.68 war zu
+  streng: Wer den Editor öffnet, nichts ändert und speichert, will damit die
+  vorhandenen Angaben des aktiven Fotos auf die übrigen übertragen – und
+  bekam nichts.
+
 ## Version 2.0.71
 
 - Auch die Kategorien haben jetzt einen Verlauf: Klick ins leere Feld zeigt
