@@ -130,6 +130,8 @@ if [ -n "$REMOTE" ]; then
 else
 	warn "Kein origin - push und Release entfallen."
 fi
+# Adresse des Projekts, fuer den Link in den Release-Notizen.
+GHURL="https://github.com/$GHREPO"
 
 # --- 0b. Abgleich mit origin ----------------------------------------------
 #
@@ -570,25 +572,32 @@ fi
 if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
    && [ "$DRYRUN" = 0 ] && [ "$PAKETE" = 1 ]; then
 	schritt "GitHub-Release"
-	# Den Abschnitt "## Version X.Y.Z" aus SDC-CHANGES.md schneiden, bis zur
-	# naechsten Ueberschrift derselben Ebene.
-	if [ -f SDC-CHANGES.md ]; then
-		awk -v v="## Version $VERSION" '
-			index($0, v) == 1 { drin = 1; print; next }
-			drin && /^## / { exit }
-			drin { print }
-		' SDC-CHANGES.md > "$NOTIZ"
+	# Der Text des Releases ist ABSICHTLICH nur eine Zeile mit einem Link auf
+	# die Versionshinweise. Frueher stand der ganze Changelog-Abschnitt darin,
+	# und die Dateien zum Herunterladen rutschten dadurch weit nach unten -
+	# genau die will aber jeder als Erstes. Der Abschnitt wird trotzdem
+	# geprueft: fehlt er, stimmt etwas mit dem Arbeitsstand nicht.
+	ABSCHNITT=0
+	if [ -f SDC-CHANGES.md ] \
+	   && grep -q "^## Version $VERSION\$" SDC-CHANGES.md; then
+		ABSCHNITT=1
 	fi
-	if [ ! -s "$NOTIZ" ]; then
+	if [ "$ABSCHNITT" = 0 ]; then
 		warn "Kein Abschnitt \"## Version $VERSION\" in SDC-CHANGES.md."
-		warn "Das Release bekaeme dann nur die nackte Versionsnummer als Text."
+		warn "Der Link im Release zeigt dann ins Leere."
 		warn "Haeufigste Ursache: es wurde nur mediawiki.lrdevplugin/ ersetzt,"
 		warn "die Datei SDC-CHANGES.md im Wurzelverzeichnis ist noch die alte."
-		frage "Trotzdem ohne Notizen weitermachen?" || ende "auf Zuruf"
-		printf 'LrMediaWiki2 %s\n' "$VERSION" > "$NOTIZ"
-	else
-		info "Notizen: $(wc -c < "$NOTIZ" | tr -d ' ') Zeichen"
+		warn "Abhilfe: das VOLLPAKET einspielen, nicht nur den Zusatzmodul-Ordner."
+		frage "Trotzdem weitermachen?" || ende "auf Zuruf"
 	fi
+	# Anker, wie GitHub ihn aus der Ueberschrift bildet: klein geschrieben,
+	# Leerzeichen zu Bindestrich, Punkte weg. "## Version 2.1.1" -> version-211
+	ANKER="version-$(printf '%s' "$VERSION" | tr -d '.')"
+	{
+		printf 'Release notes: %s/blob/%s/SDC-CHANGES.md#%s\n' \
+			"$GHURL" "$TAG" "$ANKER"
+	} > "$NOTIZ"
+	info "Release-Text: eine Zeile mit dem Link auf die Versionshinweise"
 
 	if [ ! -f "$NUTZER" ] || [ ! -f "$VOLL" ]; then
 		ende "Die Pakete fehlen in dist/ - lief ./packe.sh durch?"
@@ -605,7 +614,10 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 				gh release upload "$TAG" --repo "$GHREPO" --clobber \
 					"$NUTZER#LrMediaWiki2-$VERSION.zip" \
 					"$VOLL#LrMediaWiki2-complete-$VERSION.zip with source code"
-				gut "Pakete ersetzt"
+				# Auch den Text erneuern: sonst bliebe bei einem neu
+				# gesetzten Tag der alte Beschreibungstext stehen.
+				gh release edit "$TAG" --repo "$GHREPO" --notes-file "$NOTIZ"
+				gut "Pakete ersetzt, Text erneuert"
 			else
 				info "Unveraendert gelassen."
 			fi

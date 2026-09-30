@@ -263,20 +263,26 @@ jobs:
           [ -x "$M" ] || { echo "Ausfuehrungsbit im Paket verloren." >&2; exit 1; }
           echo "Signatur im Paket in Ordnung."
 
-      - name: Release-Notizen aus SDC-CHANGES.md schneiden
+      # Der Text des Releases ist ABSICHTLICH nur eine Zeile mit einem Link
+      # auf die Versionshinweise. Frueher stand der ganze Changelog-Abschnitt
+      # darin, und die Dateien zum Herunterladen rutschten weit nach unten -
+      # genau die will aber jeder als Erstes sehen.
+      - name: Release-Text schreiben (nur der Link)
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          awk -v v="## Version $V" '
-            index($0, v) == 1 { drin = 1; print; next }
-            drin && /^## / { exit }
-            drin { print }
-          ' SDC-CHANGES.md > "$RUNNER_TEMP/notes.md"
-          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
-            printf 'LrMediaWiki2 %s\n' "$V" > "$RUNNER_TEMP/notes.md"
-            echo "Kein Abschnitt '## Version $V' gefunden - Ersatznotiz."
+          TAG="v$V"
+          # Anker, wie GitHub ihn aus der Ueberschrift bildet: klein
+          # geschrieben, Leerzeichen zu Bindestrich, Punkte weg.
+          # "## Version 2.1.1" -> version-211
+          ANKER="version-$(printf '%s' "$V" | tr -d '.')"
+          if ! grep -q "^## Version $V\$" SDC-CHANGES.md; then
+            echo "::warning::Kein Abschnitt '## Version $V' in SDC-CHANGES.md - der Link im Release zeigt ins Leere. Vermutlich wurde nur mediawiki.lrdevplugin/ ersetzt."
           fi
-          wc -c < "$RUNNER_TEMP/notes.md"
+          printf 'Release notes: %s/%s/blob/%s/SDC-CHANGES.md#%s\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$TAG" "$ANKER" \
+            > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
 
       # Anlegen ODER ergaenzen. Das Release kann schon da sein, weil
       # release.sh es auf dem Rechner anlegt, waehrend derselbe Tag-Push
@@ -295,6 +301,9 @@ jobs:
           if gh release view "v$V" >/dev/null 2>&1; then
             echo "Release v$V gibt es schon - haenge die Pakete an."
             gh release upload "v$V" --clobber "$NUTZER" "$VOLL"
+            # Auch den Text erneuern: sonst bliebe bei einem neu gesetzten Tag
+            # der alte Beschreibungstext stehen, obwohl die Dateien neu sind.
+            gh release edit "v$V" --notes-file "$RUNNER_TEMP/notes.md"
           else
             gh release create "v$V" \
               --title "LrMediaWiki2 $V" \

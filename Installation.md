@@ -111,9 +111,14 @@ Minuten lang kein Lebenszeichen aus Lightroom kommt.
 
 ### Erster Start unter macOS
 
-Die mitgelieferten Programme sind nicht von Apple beglaubigt, sofern das Release
-nicht ausdrücklich anderes angibt. Beim ersten Start meldet macOS deshalb, das
-Programm könne nicht geprüft werden. Zwei Wege:
+Seit Version 2.1 ist die Mac-Fassung der Hintergrund-App signiert und von Apple
+beglaubigt. Sie startet ohne Rückfrage, auch direkt aus einem heruntergeladenen
+Paket. Für den ersten Start prüft macOS einmal online bei Apple nach; ohne
+Internetverbindung kann deshalb trotzdem eine Meldung kommen.
+
+Erscheint wider Erwarten der Hinweis, das Programm könne nicht geprüft werden —
+etwa bei einer älteren Fassung oder einem selbst gebauten Stand —, gibt es zwei
+Wege:
 
 - Systemeinstellungen, Datenschutz und Sicherheit. Dort steht der Hinweis auf das
   blockierte Programm mit einer Schaltfläche Dennoch erlauben.
@@ -123,8 +128,6 @@ Programm könne nicht geprüft werden. Zwei Wege:
   ```
   xattr -dr com.apple.quarantine "<Pfad>/bin"
   ```
-
-Danach startet die Hintergrund-App ohne weitere Rückfrage.
 
 ### Erster Start unter Windows
 

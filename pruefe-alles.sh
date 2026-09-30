@@ -127,7 +127,14 @@ echo "Lua 5.1: $LUA51$([ -n "$LUAC" ] && echo " (Syntaxpruefung mit ${LUAC%% *})
 reihe() {
 	local datei="$1"; shift
 	if [ -n "$TESTS" ] && [ -f "$TESTS/$datei" ]; then
-		( cd "$TESTS" && "$@" "$datei" ) | sed 's/^/   /'
+		# pipefail wie bei Stufe 5, und aus demselben Grund: ohne ihn waere
+		# der Rueckgabewert der von sed, und eine fehlgeschlagene Testreihe
+		# liefe stillschweigend durch.
+		if ! ( set -o pipefail
+		       cd "$TESTS" && "$@" "$datei" | sed 's/^/   /' ); then
+			echo "   Testreihe $datei FEHLGESCHLAGEN."
+			exit 1
+		fi
 	else
 		echo "   uebersprungen ($datei nicht vorhanden)"
 	fi
@@ -299,7 +306,19 @@ echo
 echo "=============================================================="
 echo " 5. Editorseite gegen die Lua-Vorlage (Byte-Gleichheit)"
 echo "=============================================================="
-( cd "$REPO" && "$LUA51" tools/check-template.lua | sed 's/^/   /' )
+# WICHTIG, teuer gelernt: `set -e` allein reicht hier NICHT. In einer
+# Pipeline zaehlt ohne `pipefail` der Rueckgabewert des LETZTEN Gliedes -
+# also der von sed, und der ist immer 0. Genau so ist im Release 2.0.74
+# eine alte Editorseite mitgefahren: diese Stufe meldete "FEHLGESCHLAGEN",
+# das Skript lief gruen weiter und die CI-Pruefung sah kein Problem.
+# pipefail steht bewusst nur in dieser Subshell: global gesetzt wuerde es
+# andere Pipelines (head, grep -q) reissen lassen.
+if ! ( set -o pipefail
+       cd "$REPO" && "$LUA51" tools/check-template.lua | sed 's/^/   /' ); then
+	echo "   Die Vorlage passt nicht zur Editorseite."
+	echo "   editor/sdc-editor.html aendern, dann: $LUA51 tools/gen-template.lua"
+	exit 1
+fi
 
 echo
 echo "=============================================================="
@@ -355,16 +374,28 @@ echo "=============================================================="
 echo " 8. Hintergrund-App: go vet und Bau aller Zielplattformen"
 echo "=============================================================="
 ( cd "$REPO/bridge" && go vet ./... && echo "   go vet ohne Befund" )
+# Gebaut wird in einen WEGWERFORDNER, nicht nach mediawiki.lrdevplugin/bin.
+# Frueher landete alles dort, und das hatte zwei Folgen: die beiden
+# Einzelscheiben fuer arm64 und x86_64 blieben neben der universellen Datei
+# liegen und fuhren im Paket mit (im Release 2.0.74 nachweislich 11,6 MB
+# Ballast), und ein bereits SIGNIERTES Programm waere ueberschrieben worden,
+# haette jemand die Pruefung nach dem Signieren laufen lassen. Diese Stufe
+# beantwortet die Frage "laesst es sich ueberall bauen?" - sie hat im
+# Auslieferungsordner nichts zu suchen. Gepackt wird, was baue-bruecke.sh
+# dort hinlegt.
+BAUT="$TQ/bau"
+mkdir -p "$BAUT"
 ( cd "$REPO/bridge"
-CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-arm64     ./sdcbridge.go
-CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-mac-x86_64    ./sdcbridge.go
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../mediawiki.lrdevplugin/bin/sdcbridge-win-amd64.exe ./sdcbridge.go
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$BAUT/sdcbridge-mac-arm64"     ./sdcbridge.go
+CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$BAUT/sdcbridge-mac-x86_64"    ./sdcbridge.go
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$BAUT/sdcbridge-win-amd64.exe" ./sdcbridge.go
 # Fuer den Funktionstest eine Fassung fuer DIESEN Rechner - ohne GOOS/GOARCH,
 # also nativ. Vorher stand hier fest GOOS=linux; auf einem Mac liess sich das
 # Ergebnis nicht starten ("cannot execute binary file").
 CGO_ENABLED=0 go build -trimpath -o "$HOSTBIN" ./sdcbridge.go )
-chmod 755 "$PLUG"/bin/*
+chmod 755 "$BAUT"/* 2>/dev/null || true
 echo "   drei Zielplattformen gebaut, dazu eine Fassung fuer diesen Rechner"
+echo "   (im Wegwerfordner - der Auslieferungsordner bleibt unberuehrt)"
 
 echo
 echo "=============================================================="

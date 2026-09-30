@@ -71,6 +71,35 @@ if [ -n "$konflikte" ]; then
 	exit 1
 fi
 
+# Zweite Sperre derselben Art, seit dem Vorfall mit 2.0.74: dort fuhr im
+# Release eine ALTE editor/sdc-editor.html mit, waehrend die daraus erzeugte
+# SdcEditorTemplate.lua neu war. Lightroom merkt davon nichts (es liest nur
+# die Vorlage), aber die naechste Aenderung an der Seite plus
+# gen-template.lua haette die neuen Felder stillschweigend zurueckgenommen.
+# Wie oben gilt: packe.sh ist die einzige Stelle, durch die jedes Paket
+# geht, also gehoert die Sperre auch hierher und nicht nur ins Pruefskript.
+if [ -f editor/sdc-editor.html ] && [ -f "$PLUG/SdcEditorTemplate.lua" ]; then
+	PLUA=""
+	for k in lua5.1 lua-5.1 lua51 luajit lua; do
+		command -v "$k" >/dev/null 2>&1 || continue
+		if [ "$("$k" -e 'io.write(_VERSION)' 2>/dev/null)" = "Lua 5.1" ]; then
+			PLUA="$k"; break
+		fi
+	done
+	if [ -n "$PLUA" ]; then
+		if ! "$PLUA" tools/check-template.lua >/dev/null 2>&1; then
+			echo "FEHLER: SdcEditorTemplate.lua passt nicht zu editor/sdc-editor.html." >&2
+			"$PLUA" tools/check-template.lua 2>&1 | sed 's/^/  /' >&2 || true
+			echo "Seite aendern, dann '$PLUA tools/gen-template.lua', dann packen." >&2
+			exit 1
+		fi
+		echo "  ok  Editorseite und erzeugte Vorlage sind bytegleich"
+	else
+		echo "WARNUNG: kein Lua 5.1 gefunden - die Byte-Gleichheit von"
+		echo "         Editorseite und Vorlage wurde NICHT geprueft."
+	fi
+fi
+
 mkdir -p "$ZIEL"
 # Den Zielpfad absolut machen: das Vollpaket wird aus dem ELTERNverzeichnis
 # gepackt, ein relatives Ziel zeigte von dort ins Leere (mit "dist" fiel das

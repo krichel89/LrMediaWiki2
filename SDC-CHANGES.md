@@ -1,5 +1,77 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.1
+
+- The search for Depicts now ends with a way out: **"Person missing from
+  Wikidata? Create a new item"**, below the results, opening the New Q5 tool
+  on Toolforge in a new tab. Photographing a festival regularly turns up
+  people who have no Wikidata item at all, and no amount of searching helps
+  there - one has to be created first. The line appears as soon as a search
+  has run, not only when nothing was found: the awkward case is usually three
+  wrong people with a similar name, not an empty list.
+  - The tool cannot take values, only the choice of fields it offers, in the
+    form ?property=P1|P2|P3. The name that was typed does not travel with it
+    and has to be entered again over there.
+  - The preset fields are aimed at portraits of people working in film: sex
+    or gender, date of birth, occupation, country of citizenship, IMDb ID.
+    They sit in one line near the top of the editor page (NEU_ITEM_FELDER)
+    and are meant to be changed there.
+  - "Created during" means an event, not a person, so it deliberately does
+    not carry the hint.
+  - The address is built from a fixed constant plus field identifiers checked
+    against ^P[1-9][0-9]*$, so nothing foreign can end up in the link.
+
+## Version 2.1.0
+
+Two real faults found in a full code review, one of them the reason the other
+went unnoticed for a whole release.
+
+- **The check script reported a failure and carried on regardless.** Stage 5
+  compares the editor page with the Lua template it is generated from. It ran
+  `check-template.lua | sed`, and `pruefe-alles.sh` sets `set -e` but not
+  `pipefail` - so the exit code counted was sed's, which is always 0. The
+  stage printed "FEHLGESCHLAGEN" in the middle of a run that ended green, and
+  the CI check saw nothing wrong. The same trap sat in the helper that runs
+  the test suites, which means stages 6 and 7a-7g could not fail a run
+  either. Both now enable `pipefail` in their own subshell - deliberately not
+  globally, where it would break pipelines ending in head or grep -q.
+- **Consequence in release 2.0.74: an outdated editor page shipped.**
+  `editor/sdc-editor.html` in that release is the 2.0.71 state - no event
+  template field, the compose button still in its old row - while the
+  generated `SdcEditorTemplate.lua` beside it is current. The plug-in itself
+  behaved correctly, because Lightroom only ever reads the template. The
+  danger was for the next change: editing the page and running
+  `gen-template.lua` would have silently reverted both features. This release
+  restores the page, and the two files are byte-identical again.
+- `packe.sh` refuses to build a package when page and template disagree, the
+  same way it already refuses merge conflict markers. It is the one place
+  every package passes through, locally and in CI, so a skipped check run
+  cannot get past it either.
+
+Further findings from the same review:
+
+- The recently-used history treated all four fields alike, which was wrong
+  twice. A leading Q number decided whether two entries were the same - also
+  for CATEGORIES, so the real Commons categories "Q1 Tower, Gold Coast" and
+  "Q1 Building" counted as one and one of them vanished. And every value was
+  split at semicolons - also the event TEMPLATE, which is a single value, so
+  a semicolon inside a template parameter tore it into two history lines.
+  Each history now knows what kind of value it holds.
+- The background app was started through a shell line that put the plug-in
+  path in double quotes, where the shell still evaluates `$` and a backtick.
+  Plug-ins live in folders the user named, and a folder called "Fotos
+  $(whoami)" is perfectly legal on a Mac. All paths now go through single
+  quotes with proper escaping.
+- Check stage 8 built the background app straight into the folder that gets
+  shipped. Two consequences: the separate arm64 and x86_64 slices stayed
+  behind next to the universal file and rode along in the packages - 11.6 MB
+  of ballast, demonstrably so in release 2.0.74 - and an already signed
+  binary would have been overwritten by anyone running the checks after
+  signing. The stage builds into a scratch folder now; what ships is what
+  `baue-bruecke.sh` put there.
+- The macOS background app is signed and notarised from version 2.1 on, so
+  the manual `xattr` step is no longer needed. Installation.md says so.
+
 ## Version 2.0.74
 
 Note: 2.0.73 was published from a working copy that did not yet contain all
