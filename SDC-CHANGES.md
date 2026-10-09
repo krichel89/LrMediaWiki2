@@ -1,5 +1,25 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.6
+
+Switching from one group of photos to the next, in the same browser tab.
+
+- **"Keep the set in this tab" is now ticked by default.** Before, it was off
+  in every new tab, so after saving person A the set was simply replaced by the
+  (empty) data of person B's photos, and there was nothing left to swap.
+- A **new selection** in Lightroom now counts as a switch when the active
+  photo changes **or** the number of selected photos changes (extending the
+  selection around the same active photo used to replace the page content).
+- After such a switch the set belongs to **all** newly selected photos: "to
+  all N selected photos" is ticked, and every non-empty field of the set is
+  written to all of them on save, not only the fields that differ from the
+  active photo. Empty fields are left alone, so existing entries of the other
+  photos are not wiped by accident.
+- Nothing is saved and nothing is asked: the switch bar ("Switch, discard
+  changes / Stay here") does not appear while the box is ticked. Clearing and
+  "Discard changes" only happen when you press them.
+- The new status line names the number of photos and the active file.
+
 ## Version 2.1.5
 
 - **Swap person now also changes the wikitext.** Until now only captions and

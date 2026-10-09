@@ -360,7 +360,7 @@ footer .status.done{color:var(--accent)}
     <span id="applyAllText"></span>
   </label>
   <label class="allsel hidden" id="keepSetBox" data-i18n-title="keepSetTip">
-    <input type="checkbox" id="keepSet">
+    <input type="checkbox" id="keepSet" checked>
     <span data-i18n="keepSet">Satz im Tab behalten</span>
   </label>
   <button id="revertBtn" data-i18n="revert">Änderungen verwerfen</button>
@@ -498,6 +498,7 @@ var STRINGS = {
     keepSet: "Satz im Tab behalten",
     keepSetTip: "Beim Wechsel des Fotos in Lightroom bleiben Zeigt, Entstanden bei, Kategorien, Unterschriften und Wikitext stehen; nur Dateiname und Fotoanzahl ändern sich. Gespeichert wird erst mit dem Knopf unten.",
     switchedKept: "Lightroom ist auf {0} gewechselt – der Satz bleibt stehen, noch nicht gespeichert.",
+    switchedKeptN: "Neue Auswahl: {0} Fotos (aktiv: {1}) – der Satz steht bereit und wird erst mit „Speichern“ auf alle geschrieben.",
     swapTip: "Person tauschen",
     swapPending: "Neue Person suchen – sie ersetzt {0}. Esc bricht ab.",
     swapCancelled: "Tausch abgebrochen.",
@@ -601,6 +602,7 @@ var STRINGS = {
     keepSet: "Keep the set in this tab",
     keepSetTip: "When Lightroom moves to another photo, Depicts, Created during, categories, captions and wikitext stay as they are; only the file name and photo count change. Nothing is saved until you press the button below.",
     switchedKept: "Lightroom moved to {0} – the set stays, not saved yet.",
+    switchedKeptN: "New selection: {0} photos (active: {1}) – the set is ready and is written to all of them only when you press Save.",
     swapTip: "Swap person",
     swapPending: "Search for the new person – they replace {0}. Esc cancels.",
     swapCancelled: "Swap cancelled.",
@@ -1625,6 +1627,7 @@ function swapPerson(alt, neu){
 
 function clearAll(){
   swapIdx = -1;
+  forcedFields = null;
   state.depicts = []; state.createdDuring = null; state.categories = [];
   state.eventTemplate = ""; state.freetext = "";
   state.captions.forEach(function(c){ c.text = ""; });
@@ -2493,6 +2496,14 @@ function coreOut(){
    Motiven genau das Falsche. */
 var loadedCore = null;
 
+/* Felder, die nach einem Fotowechsel mit „Satz behalten“ ausdruecklich auf
+   ALLE markierten Fotos geschrieben werden sollen, auch wenn sie zufaellig
+   mit dem Stand des aktiven Fotos uebereinstimmen. Sonst bekaeme das aktive
+   Foto den Satz und die uebrigen nur die Unterschiede zu IHM. Leere Felder
+   zaehlen nicht mit: sie wuerden vorhandene Eintraege der anderen Fotos
+   loeschen, ohne dass jemand das verlangt haette. */
+var forcedFields = null;
+
 function changedFields(){
   var now = coreOut();
   var was = loadedCore || {};
@@ -2504,6 +2515,11 @@ function changedFields(){
     freetext:      now.freetext      !== (was.freetext || ""),
     eventTemplate: now.eventTemplate !== (was.eventTemplate || "")
   };
+  if (forcedFields) {
+    Object.keys(forcedFields).forEach(function(k){
+      if (forcedFields[k]) ch[k] = true;
+    });
+  }
   /* description_all wird aus Unterschriften, Zeigt, Entstanden bei und
      Freitext zusammengesetzt - es gilt als geändert, sobald eines davon
      sich geändert hat. Die Kategorien stehen NICHT darin. */
@@ -2615,6 +2631,7 @@ function adoptState(p, kept){
   load();
   dirty = false;
   swapIdx = -1;
+  forcedFields = null;
   if (kept) {
     /* „Satz im Tab behalten“: der Inhalt des vorigen Fotos wird ueber das
        neue gelegt. loadedCore bleibt der Stand des NEUEN Fotos, damit beim
@@ -2624,7 +2641,16 @@ function adoptState(p, kept){
     state.categories = kept.categories; state.captions = kept.captions;
     state.freetext = kept.freetext; state.eventTemplate = kept.eventTemplate;
     state.workflow = kept.workflow;
-    state.applyToAll = photoCount() > 1 && kept.applyToAll;
+    /* Bei einer neuen Mehrfachauswahl gehoert der Satz zu ALLEN markierten
+       Fotos - dafuer ist der Wechsel gedacht. Abschalten bleibt moeglich. */
+    state.applyToAll = photoCount() > 1;
+    var kc = coreOut();
+    forcedFields = {
+      depicts: kc.depicts !== "", createdDuring: kc.createdDuring !== "",
+      categories: kc.categories !== "",
+      captions: Object.keys(kc.captions).length > 0,
+      freetext: kc.freetext !== "", eventTemplate: kc.eventTemplate !== ""
+    };
     touch();
   } else if (applyWorkflowPrefill()) touch();
   renderAll();
@@ -2697,7 +2723,9 @@ function onBridgeState(env){
   if (!env.state) return;
 
   var keep = document.getElementById("keepSet");
-  if (keep && keep.checked && env.state.photoKey !== PAYLOAD.photoKey) {
+  var neueAuswahl = env.state.photoKey !== PAYLOAD.photoKey ||
+    Number(env.state.photoCount || 1) !== photoCount();
+  if (keep && keep.checked && neueAuswahl) {
     var k = JSON.parse(JSON.stringify({
       depicts: state.depicts, createdDuring: state.createdDuring,
       categories: state.categories, captions: state.captions,
@@ -2705,7 +2733,9 @@ function onBridgeState(env){
       workflow: state.workflow, applyToAll: state.applyToAll }));
     pendingState = null;
     adoptState(env.state, k);
-    setStatus(t("switchedKept", PAYLOAD.fileName || "?"), "dirty");
+    setStatus(photoCount() > 1
+      ? t("switchedKeptN", photoCount(), PAYLOAD.fileName || "?")
+      : t("switchedKept", PAYLOAD.fileName || "?"), "dirty");
     return;
   }
   if (dirty) {
@@ -2763,6 +2793,7 @@ function saveViaBridge(){
   }).then(function(r){
     if (!r.ok) throw new Error("HTTP " + r.status);
     dirty = false;
+    forcedFields = null;
     setStatus(t("savedLive"), "done");
     showDone(t("savedLiveLong"), buildWikitext());
   }).catch(function(){
@@ -2883,7 +2914,7 @@ function init(){
   });
 
   document.getElementById("revertBtn").addEventListener("click", function(){
-    load(); dirty = false; renderAll();
+    load(); dirty = false; forcedFields = null; renderAll();
     document.getElementById("donePanel").classList.remove("open");
     setStatus(t("reverted"));
   });
