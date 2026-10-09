@@ -304,6 +304,44 @@ fi
 
 echo
 echo "=============================================================="
+echo " 4d. Marken des Beschreibungsblocks: Editor und Lua gleich?"
+echo "=============================================================="
+# Der Browser-Editor legt zwei HTML-Kommentare um den selbst erzeugten
+# Beschreibungsblock; MediaWikiInterface entfernt genau diese zwei, damit sie
+# nicht bei Commons landen. Beide Seiten tragen den Wortlaut EINZELN - wird er
+# nur an einer Stelle geaendert, bleiben die Marken stillschweigend in der
+# Dateibeschreibung stehen. Genau das faengt diese Stufe.
+HTML_M="$REPO/editor/sdc-editor.html"
+LUA_M="$PLUG/MediaWikiInterface.lua"
+if [ -f "$HTML_M" ] && [ -f "$LUA_M" ]; then
+	# Aus dem Editor: die Werte von BEGIN und END, ohne Anfuehrungszeichen.
+	E_AUF=$(sed -n 's/.*var BEGIN *= *"\(.*\)";.*/\1/p' "$HTML_M" | head -1)
+	E_ZU=$(sed -n 's/.*var END *= *"\(.*\)";.*/\1/p'  "$HTML_M" | head -1)
+	L_AUF=$(sed -n "s/.*MARKE_AUF *= *'\(.*\)'.*/\1/p" "$LUA_M" | head -1)
+	L_ZU=$(sed -n "s/.*MARKE_ZU *= *'\(.*\)'.*/\1/p"  "$LUA_M" | head -1)
+	if [ -z "$E_AUF" ] || [ -z "$E_ZU" ]; then
+		echo "   FEHLER: BEGIN/END im Editor nicht gefunden." >&2
+		exit 1
+	fi
+	if [ -z "$L_AUF" ] || [ -z "$L_ZU" ]; then
+		echo "   FEHLER: MARKE_AUF/MARKE_ZU in MediaWikiInterface.lua nicht gefunden." >&2
+		exit 1
+	fi
+	if [ "$E_AUF" != "$L_AUF" ] || [ "$E_ZU" != "$L_ZU" ]; then
+		echo "   FEHLER: die Marken weichen ab." >&2
+		echo "     Editor: $E_AUF / $E_ZU" >&2
+		echo "     Lua:    $L_AUF / $L_ZU" >&2
+		echo "   Beide Seiten muessen zeichengleich sein, sonst bleiben die" >&2
+		echo "   Kommentare in der Dateibeschreibung bei Commons stehen." >&2
+		exit 1
+	fi
+	echo "   gleich: $E_AUF"
+else
+	echo "   uebersprungen (Editorseite oder MediaWikiInterface.lua fehlt)"
+fi
+
+echo
+echo "=============================================================="
 echo " 5. Editorseite gegen die Lua-Vorlage (Byte-Gleichheit)"
 echo "=============================================================="
 # WICHTIG, teuer gelernt: `set -e` allein reicht hier NICHT. In einer

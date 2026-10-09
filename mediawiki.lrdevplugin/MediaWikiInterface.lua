@@ -24,6 +24,16 @@ local MediaWikiApi = require 'MediaWikiApi'
 local MediaWikiOAuth = require 'MediaWikiOAuth'
 local MediaWikiUtils = require 'MediaWikiUtils'
 
+-- Die zwei Marken, die der Browser-Editor um den selbst erzeugten
+-- Beschreibungsblock legt (COMPOSE.BEGIN/END in editor/sdc-editor.html).
+-- Sie bleiben im Feld description_all stehen, weil sie dort gebraucht
+-- werden, gehoeren aber NICHT nach Commons - sie werden beim Bauen der
+-- Dateibeschreibung entfernt. Wer sie im Editor umbenennt, muss sie hier
+-- mit umbenennen; Pruefstufe 4d wacht darueber, dass beide Seiten
+-- zeichengleich bleiben.
+local MARKE_AUF = '<!-- LrMediaWiki2:Beschreibung -->'
+local MARKE_ZU  = '<!-- /LrMediaWiki2:Beschreibung -->'
+
 local MediaWikiInterface = {
 	username = nil,
 	password = nil,
@@ -373,6 +383,14 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 			local kopf = MediaWikiUtils.trim(line)
 			if kopf == '# Structured Data' or kopf == '# Wikitext' then
 				-- verworfen
+			elseif kopf == MARKE_AUF or kopf == MARKE_ZU then
+				-- Ebenso die beiden Marken um den erzeugten
+				-- Beschreibungsblock. Sie haben im Editor eine Aufgabe -
+				-- "Bildunterschriften erzeugen" findet daran den eigenen
+				-- Block wieder und ERSETZT ihn, statt ihn ein zweites Mal
+				-- anzuhaengen, und handgeschriebener Text drumherum bleibt
+				-- stehen. Auf der Dateiseite bei Commons sind sie dagegen
+				-- nur Ballast, den dort niemand erwartet.
 			elseif lang then
 				structuredData['caption_' .. lang:lower()] = MediaWikiUtils.trim(val)
 			else
@@ -380,6 +398,26 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 			end
 		end
 		descriptionAll = table.concat(keptLines, '\n')
+		-- Zweiter Durchgang fuer den Fall, dass eine Marke NICHT allein auf
+		-- ihrer Zeile steht - etwa weil jemand den Block von Hand umgebaut
+		-- hat. Der Zeilenfilter oben greift dann nicht, ein Ersetzen im
+		-- ganzen Text schon. Gesucht wird zeichengenau, nicht als Muster:
+		-- `plain` sorgt dafuer, dass die Bindestriche und Schraegstriche
+		-- keine Sonderbedeutung bekommen.
+		for _, marke in ipairs({ MARKE_AUF, MARKE_ZU }) do
+			local a, b = descriptionAll:find(marke, 1, true)
+			while a do
+				descriptionAll = descriptionAll:sub(1, a - 1)
+					.. descriptionAll:sub(b + 1)
+				a, b = descriptionAll:find(marke, 1, true)
+			end
+		end
+		-- Durch das Entfernen koennen drei oder mehr Zeilenumbrueche
+		-- hintereinander stehen. Auf Commons waere das eine unnoetige Luecke
+		-- in der Beschreibung; zwei Umbrueche (eine Leerzeile) bleiben.
+		while descriptionAll:find('\n\n\n') do
+			descriptionAll = descriptionAll:gsub('\n\n\n', '\n\n')
+		end
 	end
 	-- Non-caption keys are extracted line-anchored as before. "%s*" tolerates
 	-- accidental leading whitespace on the line without requiring it.

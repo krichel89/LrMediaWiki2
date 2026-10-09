@@ -124,6 +124,15 @@ button.primary:hover{filter:brightness(1.1); color:#10262b}
   text-align:left; cursor:pointer; border-bottom:1px solid var(--line);
 }
 .results .hit:last-child{border-bottom:0}
+.results .hitrow{display:flex; align-items:stretch; border-bottom:1px solid var(--line)}
+.results .hitrow:last-child{border-bottom:0}
+.results .hitrow .hit{flex:1; min-width:0; border-bottom:0}
+.results .hitrow .wdl{flex:none; display:flex; align-items:center;
+  padding:0 .7rem; color:var(--accent); text-decoration:none;
+  border-left:1px solid var(--line)}
+.results .hitrow .wdl:hover{background:var(--accent-dim); color:#fff}
+.chip a.id{text-decoration:none}
+.chip a.id:hover{background:var(--accent-dim); color:#fff}
 
 /* Ankreuzfeld „auf alle markierten“ in der Fusszeile ---------------------- */
 .allsel{display:flex; gap:.4rem; align-items:center; white-space:nowrap}
@@ -168,6 +177,12 @@ button.primary:hover{filter:brightness(1.1); color:#10262b}
   color:var(--muted); padding:0 .55rem; cursor:pointer; border-radius:0;
 }
 .chip .x:hover{background:var(--danger); color:#fff; border-color:var(--danger)}
+.chip .sw{
+  border:0; background:transparent; border-left:1px solid var(--line);
+  color:var(--muted); padding:0 .55rem; cursor:pointer; border-radius:0;
+}
+.chip .sw:hover{background:var(--accent); color:#fff; border-color:var(--accent)}
+.chip.swap{outline:2px solid var(--accent)}
 .chips .none{color:var(--muted); font-size:.88rem; font-style:italic}
 
 /* Captions ----------------------------------------------------------------- */
@@ -211,6 +226,7 @@ footer .status.done{color:var(--accent)}
   <span class="file" id="fileName">–</span>
   <span class="count" id="photoCount"></span>
   <span class="pill hidden" id="bridgePill"></span>
+  <button id="clearBtn" data-i18n="clearAll" data-i18n-title="clearAllTip">Alle Einträge löschen</button>
   <select id="workflowSel" class="hidden" aria-label="Workflow"></select>
   <select id="uiLang" aria-label="Sprache / Language"></select>
 </header>
@@ -343,6 +359,10 @@ footer .status.done{color:var(--accent)}
     <input type="checkbox" id="applyAll">
     <span id="applyAllText"></span>
   </label>
+  <label class="allsel hidden" id="keepSetBox" data-i18n-title="keepSetTip">
+    <input type="checkbox" id="keepSet">
+    <span data-i18n="keepSet">Satz im Tab behalten</span>
+  </label>
   <button id="revertBtn" data-i18n="revert">Änderungen verwerfen</button>
   <button class="primary" id="saveBtn" data-i18n="save">Speichern und zu Lightroom</button>
 </footer>
@@ -474,7 +494,19 @@ var STRINGS = {
     switchPending: "Lightroom ist auf {0} gewechselt – hier stehen noch ungespeicherte Änderungen.",
     adoptSwitch: "Wechseln, Änderungen verwerfen",
     staySwitch: "Hierbleiben",
-    photosSelected: "{0} Fotos ausgewählt"
+    photosSelected: "{0} Fotos ausgewählt",
+    keepSet: "Satz im Tab behalten",
+    keepSetTip: "Beim Wechsel des Fotos in Lightroom bleiben Zeigt, Entstanden bei, Kategorien, Unterschriften und Wikitext stehen; nur Dateiname und Fotoanzahl ändern sich. Gespeichert wird erst mit dem Knopf unten.",
+    switchedKept: "Lightroom ist auf {0} gewechselt – der Satz bleibt stehen, noch nicht gespeichert.",
+    swapTip: "Person tauschen",
+    swapPending: "Neue Person suchen – sie ersetzt {0}. Esc bricht ab.",
+    swapCancelled: "Tausch abgebrochen.",
+    swapDone: "{0} → {1}: {2} Unterschrift(en), {3} Kategorie(n) geändert.",
+    swapNothing: "{0} → {1}: nur „Zeigt“ geändert – in Unterschriften und Kategorien kam der alte Name nicht vor.",
+    clearAll: "Alle Einträge löschen",
+    clearAllTip: "Leert Zeigt, Entstanden bei, Vorlage, Kategorien, Unterschriften und Wikitext. „Änderungen verwerfen“ holt den Stand aus Lightroom zurück.",
+    clearedAll: "Alle Einträge gelöscht – noch nicht gespeichert.",
+    wdLinkTip: "{0} auf Wikidata öffnen (neuer Tab) – z. B. um gleichnamige Personen zu unterscheiden"
   },
   en: {
     langName: "English",
@@ -565,7 +597,19 @@ var STRINGS = {
     switchPending: "Lightroom moved to {0} – there are unsaved changes here.",
     adoptSwitch: "Switch, discard changes",
     staySwitch: "Stay here",
-    photosSelected: "{0} photos selected"
+    photosSelected: "{0} photos selected",
+    keepSet: "Keep the set in this tab",
+    keepSetTip: "When Lightroom moves to another photo, Depicts, Created during, categories, captions and wikitext stay as they are; only the file name and photo count change. Nothing is saved until you press the button below.",
+    switchedKept: "Lightroom moved to {0} – the set stays, not saved yet.",
+    swapTip: "Swap person",
+    swapPending: "Search for the new person – they replace {0}. Esc cancels.",
+    swapCancelled: "Swap cancelled.",
+    swapDone: "{0} → {1}: {2} caption(s), {3} categor(y/ies) changed.",
+    swapNothing: "{0} → {1}: only “Depicts” changed – the old name did not occur in captions or categories.",
+    clearAll: "Clear all entries",
+    clearAllTip: "Empties Depicts, Created during, template, categories, captions and wikitext. “Discard changes” brings back the state from Lightroom.",
+    clearedAll: "All entries cleared – not saved yet.",
+    wdLinkTip: "Open {0} on Wikidata (new tab) – e.g. to tell people with the same name apart"
   }
 };
 
@@ -1065,7 +1109,19 @@ function wireSearch(inputId, listId, onPick, recentKey, neuAnbieten){
       // den Fokuswechsel vollstaendig.
       b.addEventListener("mousedown", function(ev){ ev.preventDefault(); });
       b.addEventListener("click", function(){ take(h); });
-      list.appendChild(b);
+      var zeile = document.createElement("div");
+      zeile.className = "hitrow";
+      zeile.appendChild(b);
+      var wl = document.createElement("a");
+      wl.className = "wdl";
+      if (wdLink(wl, h.id)) {
+        wl.textContent = "\u2197";
+        // Wie beim Treffer: der Zeiger darf dem Eingabefeld den Fokus nicht
+        // nehmen, sonst raeumt blur die Liste vor dem Klick weg.
+        wl.addEventListener("mousedown", function(ev){ ev.preventDefault(); });
+        zeile.appendChild(wl);
+      }
+      list.appendChild(zeile);
     });
     neuZeile();
     list.classList.add("open");
@@ -1314,10 +1370,26 @@ function renderTemplate(){
 /* ---------------------------------------------------------------------------
    Darstellung
 --------------------------------------------------------------------------- */
-function chip(id, label, onRemove){
+/* Adresse des Wikidata-Eintrags, nur fuer eine wohlgeformte Q-Nummer; sonst
+   leer. Die Adresse besteht ausschliesslich aus festem Anfang und der
+   geprueften Nummer. */
+function wdUrl(id){
+  return /^Q[1-9][0-9]*$/.test(String(id)) ? "https://www.wikidata.org/wiki/" + id : "";
+}
+function wdLink(a, id){
+  var u = wdUrl(id);
+  if (!u) return false;
+  a.href = u; a.target = "_blank"; a.rel = "noopener noreferrer";
+  a.title = t("wdLinkTip", id);
+  return true;
+}
+function chip(id, label, onRemove, onSwap, swapping){
   var el = document.createElement("span");
   el.className = "chip";
-  var i = document.createElement("span"); i.className = "id"; i.textContent = id;
+  var u = wdUrl(id);
+  var i = document.createElement(u ? "a" : "span"); i.className = "id";
+  i.textContent = id + (u ? " \u2197" : "");
+  if (u) wdLink(i, id);
   var l = document.createElement("span");
   l.className = "lab" + (label ? "" : " empty");
   l.textContent = label || t("noLabel");
@@ -1325,7 +1397,17 @@ function chip(id, label, onRemove){
   x.className = "x"; x.type = "button"; x.title = t("remove");
   x.textContent = "✕";
   x.addEventListener("click", onRemove);
-  el.appendChild(i); el.appendChild(l); el.appendChild(x);
+  el.appendChild(i); el.appendChild(l);
+  if (onSwap) {
+    var w = document.createElement("button");
+    w.className = "sw"; w.type = "button"; w.title = t("swapTip");
+    w.setAttribute("aria-label", t("swapTip"));
+    w.textContent = "\u21C4";
+    w.addEventListener("click", onSwap);
+    el.appendChild(w);
+    if (swapping) el.className += " swap";
+  }
+  el.appendChild(x);
   return el;
 }
 function plainChip(text, onRemove){
@@ -1345,14 +1427,147 @@ function emptyNote(box, text){
   box.appendChild(n);
 }
 
+/* Index des Eintrags, der beim naechsten Treffer ersetzt wird; -1 = keiner. */
+var swapIdx = -1;
+
+/* ---------------------------------------------------------------------------
+   Person tauschen. Reine Logik ohne DOM und ohne Netz (wird ausserhalb des
+   Browsers mit Zusicherungen geprueft). st = { depicts, categories,
+   captions }; neu = { id, label }; info (alles optional):
+     labels: { sprache: { alt, neu } }  Bezeichnungen je Unterschriftsprache
+     catAlt: [Namen]  Kategorienamen, die zur alten Person gehoeren
+     catNeu: Name     Kategoriename der neuen Person
+   Gibt { captions, categories } zurueck: wie viele Stellen geaendert wurden.
+--------------------------------------------------------------------------- */
+var SWAP = (function(){
+  function ersetze(text, alt, neu){
+    var teile = String(text).split(alt);
+    return { text: teile.join(neu), n: teile.length - 1 };
+  }
+  function anwenden(st, idx, neu, info){
+    info = info || {};
+    var alt = st.depicts[idx];
+    var res = { captions: 0, categories: 0 };
+    if (!alt) return res;
+
+    st.captions.forEach(function(c){
+      var l = String(c.lang || "").trim().toLowerCase();
+      var p = (info.labels && info.labels[l]) || {};
+      var ziel = p.neu || neu.label;
+      if (!ziel || !c.text) return;
+      var kand = [];
+      [p.alt, alt.label].forEach(function(a){
+        if (a && kand.indexOf(a) < 0) kand.push(a);
+      });
+      kand.sort(function(a, b){ return b.length - a.length; });
+      for (var i = 0; i < kand.length; i++) {
+        if (kand[i] === ziel) break;
+        var r = ersetze(c.text, kand[i], ziel);
+        if (r.n) { c.text = r.text; res.captions++; break; }
+      }
+    });
+
+    var altNamen = {};
+    (info.catAlt || []).concat(alt.label ? [alt.label] : []).forEach(function(n){
+      if (n) altNamen[String(n).toLowerCase()] = true;
+    });
+    var neuName = info.catNeu || neu.label || "";
+    if (neuName) {
+      var out = [], gesehen = {};
+      st.categories.forEach(function(c){
+        var ist = altNamen[c.toLowerCase()] && c.toLowerCase() !== neuName.toLowerCase();
+        var name = ist ? neuName : c;
+        if (ist) res.categories++;
+        if (!gesehen[name.toLowerCase()]) { gesehen[name.toLowerCase()] = true; out.push(name); }
+      });
+      st.categories = out;
+    }
+
+    var schon = -1;
+    st.depicts.forEach(function(d, i){ if (d.id === neu.id) schon = i; });
+    if (schon >= 0 && schon !== idx) st.depicts.splice(idx, 1);
+    else st.depicts[idx] = { id: neu.id, label: neu.label || "" };
+    return res;
+  }
+  return { anwenden: anwenden };
+})();
+
+function p373Oder(e){
+  var claims = (e && e.claims && e.claims.P373) || [];
+  for (var i = 0; i < claims.length; i++) {
+    var c = claims[i];
+    if (c.rank !== "deprecated" && c.mainsnak && c.mainsnak.snaktype === "value" &&
+        typeof c.mainsnak.datavalue.value === "string") {
+      return c.mainsnak.datavalue.value.trim();
+    }
+  }
+  return "";
+}
+
+function swapPerson(alt, neu){
+  if (alt.id === neu.id) return;
+  var langs = ["en"];
+  state.captions.forEach(function(c){
+    var l = String(c.lang || "").trim().toLowerCase();
+    if (/^[a-z]{2}[a-z0-9-]*$/.test(l) && langs.indexOf(l) < 0) langs.push(l);
+  });
+  setStatus(t("searching"));
+  api({ action:"wbgetentities", ids: alt.id + "|" + neu.id,
+        props:"claims|labels", languages: langs.slice(0, 20).join("|") })
+  .then(function(d){
+    var ents = d.entities || {}, ea = ents[alt.id], en = ents[neu.id];
+    var info = { labels: {}, catAlt: [], catNeu: "" };
+    function lab(e, l){
+      return (e && e.labels && e.labels[l] && e.labels[l].value) || "";
+    }
+    langs.forEach(function(l){ info.labels[l] = { alt: lab(ea, l), neu: lab(en, l) }; });
+    var a373 = p373Oder(ea);
+    if (a373) info.catAlt.push(a373);
+    if (lab(ea, "en")) info.catAlt.push(lab(ea, "en"));
+    info.catNeu = p373Oder(en) || lab(en, "en");
+    if (!neu.label) neu.label = lab(en, UI) || lab(en, "en");
+    return info;
+  })
+  .catch(function(){ return {}; })
+  .then(function(info){
+    var idx = -1;
+    state.depicts.forEach(function(d, i){ if (d.id === alt.id) idx = i; });
+    if (idx < 0) return;
+    var res = SWAP.anwenden(state, idx, neu, info);
+    touch(); renderDepicts(); renderCaptions(); renderCategories();
+    var n1 = alt.label || alt.id, n2 = neu.label || neu.id;
+    setStatus((res.captions || res.categories)
+      ? t("swapDone", n1, n2, res.captions, res.categories)
+      : t("swapNothing", n1, n2));
+  });
+}
+
+function clearAll(){
+  swapIdx = -1;
+  state.depicts = []; state.createdDuring = null; state.categories = [];
+  state.eventTemplate = ""; state.freetext = "";
+  state.captions.forEach(function(c){ c.text = ""; });
+  touch(); renderAll();
+  setStatus(t("clearedAll"), "dirty");
+}
+
 function renderDepicts(){
   var box = document.getElementById("depChips");
   box.innerHTML = "";
   if (!state.depicts.length) { emptyNote(box, t("depictsEmpty")); return; }
   state.depicts.forEach(function(e, i){
     box.appendChild(chip(e.id, e.label, function(){
+      if (swapIdx === i) swapIdx = -1;
       state.depicts.splice(i, 1); touch(); renderDepicts();
-    }));
+    }, function(){
+      if (swapIdx === i) {
+        swapIdx = -1; renderDepicts(); setStatus(t("swapCancelled"));
+        return;
+      }
+      swapIdx = i; renderDepicts();
+      setStatus(t("swapPending", e.label || e.id));
+      document.getElementById("depSearch").focus();
+    }, swapIdx === i));
   });
 }
 function renderCreatedDuring(){
@@ -2314,11 +2529,23 @@ function bridgeUrl(path){
 }
 
 /* Uebernimmt einen von Lightroom geschickten Zustand. */
-function adoptState(p){
+function adoptState(p, kept){
   PAYLOAD = p;
   load();
   dirty = false;
-  if (applyWorkflowPrefill()) touch();
+  swapIdx = -1;
+  if (kept) {
+    /* „Satz im Tab behalten“: der Inhalt des vorigen Fotos wird ueber das
+       neue gelegt. loadedCore bleibt der Stand des NEUEN Fotos, damit beim
+       Speichern als geaendert gilt, was sich gegenueber diesem Foto
+       unterscheidet. */
+    state.depicts = kept.depicts; state.createdDuring = kept.createdDuring;
+    state.categories = kept.categories; state.captions = kept.captions;
+    state.freetext = kept.freetext; state.eventTemplate = kept.eventTemplate;
+    state.workflow = kept.workflow;
+    state.applyToAll = photoCount() > 1 && kept.applyToAll;
+    touch();
+  } else if (applyWorkflowPrefill()) touch();
   renderAll();
   document.getElementById("donePanel").classList.remove("open");
   document.getElementById("fileName").textContent = PAYLOAD.fileName || "";
@@ -2388,6 +2615,18 @@ function onBridgeState(env){
   BRIDGE.rev = env.rev;
   if (!env.state) return;
 
+  var keep = document.getElementById("keepSet");
+  if (keep && keep.checked && env.state.photoKey !== PAYLOAD.photoKey) {
+    var k = JSON.parse(JSON.stringify({
+      depicts: state.depicts, createdDuring: state.createdDuring,
+      categories: state.categories, captions: state.captions,
+      freetext: state.freetext, eventTemplate: state.eventTemplate,
+      workflow: state.workflow, applyToAll: state.applyToAll }));
+    pendingState = null;
+    adoptState(env.state, k);
+    setStatus(t("switchedKept", PAYLOAD.fileName || "?"), "dirty");
+    return;
+  }
   if (dirty) {
     pendingState = env.state;
     showSwitchBar(env.state.fileName || "?");
@@ -2496,6 +2735,13 @@ function init(){
   renderAll();
 
   wireSearch("depSearch", "depResults", function(e){
+    if (swapIdx >= 0 && state.depicts[swapIdx]) {
+      var alt = state.depicts[swapIdx];
+      swapIdx = -1;
+      renderDepicts();
+      swapPerson(alt, e);
+      return;
+    }
     if (!state.depicts.some(function(x){ return x.id === e.id; })) {
       state.depicts.push(e);
     }
@@ -2507,6 +2753,15 @@ function init(){
   wireSearch("cdSearch", "cdResults", function(e){
     state.createdDuring = e; touch(); renderCreatedDuring();
   }, "createdDuring");
+
+  document.getElementById("depSearch").addEventListener("keydown", function(ev){
+    if (ev.key === "Escape" && swapIdx >= 0) {
+      swapIdx = -1; renderDepicts(); setStatus(t("swapCancelled"));
+    }
+  });
+  document.getElementById("clearBtn").addEventListener("click", clearAll);
+  var keepBox = document.getElementById("keepSetBox");
+  if (BRIDGE) keepBox.classList.remove("hidden");
 
   wireCategoryInput();
   wireTemplateInput();

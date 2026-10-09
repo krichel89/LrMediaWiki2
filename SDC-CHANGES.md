@@ -1,5 +1,65 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.4
+
+- **Wikidata links.** Every Q number in the editor now opens its Wikidata
+  item in a new tab: on the chips of Depicts and Created during (the number
+  carries an arrow) and, as a separate arrow, on each search result and each
+  entry of the recently-used list. Meant for checking people who share a
+  name before one of them is picked. The address is built only from the fixed
+  prefix and a Q number that passed a strict pattern check; the link opens
+  with `noopener noreferrer`.
+- "Clear all entries" moved from the footer to the top bar, next to the
+  bridge status.
+
+## Version 2.1.3
+
+Reusing one browser tab across photos. Select new photos in Lightroom, switch
+to the tab you already have, change only what differs.
+
+- **"Keep the set in this tab"** (footer, only while the bridge is live).
+  When ticked and Lightroom moves to another photo, Depicts, Created during,
+  categories, captions and wikitext stay as they are; only the file name and
+  photo count change. The set counts as unsaved for the new photo and is
+  written when you press the save button - nothing is saved by switching.
+  Unticked, the behaviour is the same as before. The tick is not remembered
+  between sessions.
+- **Swap person** (the arrows button on each Depicts chip). Press it, search
+  the new person, pick: in every caption the old name is replaced by the
+  new person's label **in that caption's language** (fetched from Wikidata;
+  falls back to the label shown on the chip), the category named like the
+  old person (Commons category P373 or English label) is renamed to the new
+  person's category, and the Depicts entry is exchanged. Everything else
+  stays. Esc or the same button again cancels. If the old name does not occur
+  anywhere, only Depicts changes and the status line says so.
+- **Clear all entries** (footer). Empties Depicts, Created during, template,
+  categories, captions and wikitext. "Discard changes" restores the state
+  from Lightroom.
+- Ten new interface strings (de/en), no change to the field definitions
+  (schemaVersion unchanged).
+
+## Version 2.1.2
+
+- The two HTML comments the editor puts around the generated description
+  block no longer travel to Commons. They do have a job inside Lightroom:
+  "Compose captions" finds its own block by them and REPLACES it instead of
+  appending a second copy, and anything written by hand around it stays
+  untouched. On a file page they are nothing but clutter that no one there
+  expects, so the description is now built without them. They stay in the
+  description_all field, where they are needed.
+  - Lines that consist only of a marker are dropped the same way the editor's
+    "# Structured Data" and "# Wikitext" headings already were.
+  - A marker that does not sit alone on its line - after someone rearranged
+    the block by hand - is removed by a second pass over the whole text,
+    matched literally rather than as a pattern.
+  - Gaps of three or more line breaks left behind by the removal are reduced
+    to one blank line.
+- New check stage 4d compares the markers in the editor page with the ones in
+  MediaWikiInterface.lua and fails when they differ. Each side carries the
+  wording separately, so renaming one of them alone would silently leave the
+  comments in the file description again - which is exactly how this kind of
+  fault stays unnoticed.
+
 ## Version 2.1.1
 
 - The search for Depicts now ends with a way out: **"Person missing from
