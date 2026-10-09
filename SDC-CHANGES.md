@@ -1,5 +1,22 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.5
+
+- **Swap person now also changes the wikitext.** Until now only captions and
+  categories were rewritten, so the generated `{{de|1=[[:de:Old Name|Old
+  Name]] at ...}}` lines still named the old person. Now, in the wikitext
+  field:
+  - an interwiki link pointing exactly at the old person's article becomes a
+    link to the new person's article in the same language (with the new
+    label as text); if the new person has no article there, the plain label
+    is written instead of a wrong link;
+  - the old label in plain text is replaced by the new label of the language
+    of the surrounding `{{xx|1=...}}` line (chip label on other lines);
+  - `[[Category:...]]` lines naming the old person's category are renamed;
+  - links to anything else are left untouched, and text that was just
+    inserted is never searched a second time.
+  The status line reports the number of places changed in the wikitext.
+
 ## Version 2.1.4
 
 - **Wikidata links.** Every Q number in the editor now opens its Wikidata

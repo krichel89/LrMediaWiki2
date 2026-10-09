@@ -501,8 +501,8 @@ var STRINGS = {
     swapTip: "Person tauschen",
     swapPending: "Neue Person suchen – sie ersetzt {0}. Esc bricht ab.",
     swapCancelled: "Tausch abgebrochen.",
-    swapDone: "{0} → {1}: {2} Unterschrift(en), {3} Kategorie(n) geändert.",
-    swapNothing: "{0} → {1}: nur „Zeigt“ geändert – in Unterschriften und Kategorien kam der alte Name nicht vor.",
+    swapDone: "{0} → {1}: {2} Unterschrift(en), {3} Kategorie(n), {4} Stelle(n) im Wikitext geändert.",
+    swapNothing: "{0} → {1}: nur „Zeigt“ geändert – in Unterschriften, Kategorien und Wikitext kam der alte Name nicht vor.",
     clearAll: "Alle Einträge löschen",
     clearAllTip: "Leert Zeigt, Entstanden bei, Vorlage, Kategorien, Unterschriften und Wikitext. „Änderungen verwerfen“ holt den Stand aus Lightroom zurück.",
     clearedAll: "Alle Einträge gelöscht – noch nicht gespeichert.",
@@ -604,8 +604,8 @@ var STRINGS = {
     swapTip: "Swap person",
     swapPending: "Search for the new person – they replace {0}. Esc cancels.",
     swapCancelled: "Swap cancelled.",
-    swapDone: "{0} → {1}: {2} caption(s), {3} categor(y/ies) changed.",
-    swapNothing: "{0} → {1}: only “Depicts” changed – the old name did not occur in captions or categories.",
+    swapDone: "{0} → {1}: {2} caption(s), {3} categor(y/ies), {4} place(s) in the wikitext changed.",
+    swapNothing: "{0} → {1}: only “Depicts” changed – the old name did not occur in captions, categories or wikitext.",
     clearAll: "Clear all entries",
     clearAllTip: "Empties Depicts, Created during, template, categories, captions and wikitext. “Discard changes” brings back the state from Lightroom.",
     clearedAll: "All entries cleared – not saved yet.",
@@ -1437,17 +1437,87 @@ var swapIdx = -1;
      labels: { sprache: { alt, neu } }  Bezeichnungen je Unterschriftsprache
      catAlt: [Namen]  Kategorienamen, die zur alten Person gehoeren
      catNeu: Name     Kategoriename der neuen Person
-   Gibt { captions, categories } zurueck: wie viele Stellen geaendert wurden.
+     sitelinks: { sprache: { alt, neu } }  Artikeltitel in der Wikipedia
+   Ersetzt auch im Wikitext (st.freetext): Interwiki-Links der Form
+   [[:de:Titel|Text]] samt Ziel, Klartext und [[Category:...]]-Zeilen.
+   Gibt { captions, categories, wikitext } zurueck: wie viele Stellen
+   geaendert wurden.
 --------------------------------------------------------------------------- */
 var SWAP = (function(){
   function ersetze(text, alt, neu){
     var teile = String(text).split(alt);
     return { text: teile.join(neu), n: teile.length - 1 };
   }
+  /* Ersetzt in EINER Zeile Klartext und Links getrennt. Links werden nur
+     angefasst, wenn sie genau auf den alten Artikel oder die alte Kategorie
+     zeigen; alle anderen Links bleiben unveraendert, ihr Text wird nicht
+     durchsucht. Der neu eingesetzte Text wird nie ein zweites Mal geprueft. */
+  function wikitext(text, alt, neu, info, altNamen, neuName, res){
+    if (!text) return text;
+    var labels = info.labels || {}, sl = info.sitelinks || {};
+    return String(text).split("\n").map(function(zeile){
+      var m = zeile.match(/^\s*\{\{([a-z][a-z0-9-]*)\|/i);
+      var lang = m ? m[1].toLowerCase() : "";
+      var p = labels[lang] || {};
+      var ziel = p.neu || neu.label;
+      var kand = [];
+      [p.alt, alt.label].forEach(function(a){
+        if (a && kand.indexOf(a) < 0) kand.push(a);
+      });
+      kand.sort(function(a, b){ return b.length - a.length; });
+
+      function klar(seg){
+        if (!ziel || !seg) return seg;
+        for (var i = 0; i < kand.length; i++) {
+          if (kand[i] === ziel) return seg;
+          var r = ersetze(seg, kand[i], ziel);
+          if (r.n) { res.wikitext++; return r.text; }
+        }
+        return seg;
+      }
+      function verweis(inner){
+        var w = inner.match(/^:([a-z][a-z0-9-]*):([^|]*)(?:\|.*)?$/i);
+        if (w) {
+          var l2 = w[1].toLowerCase(), q = sl[l2] || {};
+          var titel = w[2].replace(/_/g, " ").trim();
+          if (q.alt && titel === q.alt) {
+            var q2 = labels[l2] || {};
+            var txt = q2.neu || neu.label;
+            res.wikitext++;
+            if (q.neu) return "[[:" + l2 + ":" + q.neu + "|" + (txt || q.neu) + "]]";
+            return txt || ("[[" + inner + "]]");
+          }
+          return "[[" + inner + "]]";
+        }
+        var c = inner.match(/^((?:category|kategorie)\s*:\s*)([^|]*)(.*)$/i);
+        if (c && neuName) {
+          var name = c[2].trim();
+          if (altNamen[name.toLowerCase()] && name.toLowerCase() !== neuName.toLowerCase()) {
+            res.wikitext++;
+            return "[[" + c[1] + neuName + c[3] + "]]";
+          }
+        }
+        return "[[" + inner + "]]";
+      }
+
+      var out = "", i = 0;
+      while (i < zeile.length) {
+        var a = zeile.indexOf("[[", i);
+        if (a < 0) { out += klar(zeile.slice(i)); break; }
+        out += klar(zeile.slice(i, a));
+        var b = zeile.indexOf("]]", a + 2);
+        if (b < 0) { out += zeile.slice(a); break; }
+        out += verweis(zeile.slice(a + 2, b));
+        i = b + 2;
+      }
+      return out;
+    }).join("\n");
+  }
+
   function anwenden(st, idx, neu, info){
     info = info || {};
     var alt = st.depicts[idx];
-    var res = { captions: 0, categories: 0 };
+    var res = { captions: 0, categories: 0, wikitext: 0 };
     if (!alt) return res;
 
     st.captions.forEach(function(c){
@@ -1472,6 +1542,7 @@ var SWAP = (function(){
       if (n) altNamen[String(n).toLowerCase()] = true;
     });
     var neuName = info.catNeu || neu.label || "";
+    st.freetext = wikitext(st.freetext, alt, neu, info, altNamen, neuName, res);
     if (neuName) {
       var out = [], gesehen = {};
       st.categories.forEach(function(c){
@@ -1513,14 +1584,23 @@ function swapPerson(alt, neu){
   });
   setStatus(t("searching"));
   api({ action:"wbgetentities", ids: alt.id + "|" + neu.id,
-        props:"claims|labels", languages: langs.slice(0, 20).join("|") })
+        props:"claims|labels|sitelinks",
+        sitefilter: langs.slice(0, 20).map(COMPOSE.langToWiki).join("|"),
+        languages: langs.slice(0, 20).join("|") })
   .then(function(d){
     var ents = d.entities || {}, ea = ents[alt.id], en = ents[neu.id];
-    var info = { labels: {}, catAlt: [], catNeu: "" };
+    var info = { labels: {}, sitelinks: {}, catAlt: [], catNeu: "" };
+    function site(e, l){
+      var q = e && e.sitelinks && e.sitelinks[COMPOSE.langToWiki(l)];
+      return (q && q.title) || "";
+    }
     function lab(e, l){
       return (e && e.labels && e.labels[l] && e.labels[l].value) || "";
     }
-    langs.forEach(function(l){ info.labels[l] = { alt: lab(ea, l), neu: lab(en, l) }; });
+    langs.forEach(function(l){
+      info.labels[l] = { alt: lab(ea, l), neu: lab(en, l) };
+      info.sitelinks[l] = { alt: site(ea, l), neu: site(en, l) };
+    });
     var a373 = p373Oder(ea);
     if (a373) info.catAlt.push(a373);
     if (lab(ea, "en")) info.catAlt.push(lab(ea, "en"));
@@ -1535,9 +1615,10 @@ function swapPerson(alt, neu){
     if (idx < 0) return;
     var res = SWAP.anwenden(state, idx, neu, info);
     touch(); renderDepicts(); renderCaptions(); renderCategories();
+    document.getElementById("freetext").value = state.freetext;
     var n1 = alt.label || alt.id, n2 = neu.label || neu.id;
-    setStatus((res.captions || res.categories)
-      ? t("swapDone", n1, n2, res.captions, res.categories)
+    setStatus((res.captions || res.categories || res.wikitext)
+      ? t("swapDone", n1, n2, res.captions, res.categories, res.wikitext)
       : t("swapNothing", n1, n2));
   });
 }
