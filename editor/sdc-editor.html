@@ -177,6 +177,16 @@ button.primary:hover{filter:brightness(1.1); color:#10262b}
   color:var(--muted); padding:0 .55rem; cursor:pointer; border-radius:0;
 }
 .chip .x:hover{background:var(--danger); color:#fff; border-color:var(--danger)}
+.chipwrap{display:inline-flex; align-items:stretch; gap:.4rem; flex-wrap:wrap}
+.chipwrap .swapbtn{
+  padding:.45rem .9rem; font-weight:600; border-color:var(--accent);
+  color:var(--accent); white-space:nowrap;
+}
+.chipwrap .swapbtn:hover{background:var(--accent); color:#10262b}
+.chipwrap.swapping .swapbtn{background:var(--accent); color:#10262b}
+.chipwrap.swapping .chip{opacity:.6; outline:2px solid var(--accent)}
+.chipwrap.swapping .chip .lab, .chipwrap.swapping .chip .id{
+  text-decoration:line-through}
 .chip .sw{
   border:0; background:transparent; border-left:1px solid var(--line);
   color:var(--muted); padding:0 .55rem; cursor:pointer; border-radius:0;
@@ -296,6 +306,20 @@ footer .status.done{color:var(--accent)}
         <button id="composeBtn" data-i18n="composeBtn">Bildunterschriften erzeugen</button>
         <button id="capAdd" data-i18n="capAdd"
                 style="margin-left:auto">Sprache hinzufügen</button>
+      </div>
+    </section>
+
+    <!-- Dateiname ---------------------------------------------------------- -->
+    <section id="secDateiname">
+      <h2 data-i18n="fnTitle">Dateiname (Vorschlag)</h2>
+      <p class="hint" data-i18n="fnHint"></p>
+      <div class="rowline">
+        <input type="text" id="fnOut" readonly spellcheck="false">
+        <button id="fnCopy" class="primary" data-i18n="fnCopy">Kopieren</button>
+      </div>
+      <div class="rowline" style="margin-top:.5rem">
+        <button id="fnCopyDe" data-i18n="fnCopyDe">Deutsche Unterschrift kopieren</button>
+        <button id="fnCopyEn" data-i18n="fnCopyEn">Englische Unterschrift kopieren</button>
       </div>
     </section>
 
@@ -507,6 +531,19 @@ var STRINGS = {
     clearAll: "Alle Einträge löschen",
     clearAllTip: "Leert Zeigt, Entstanden bei, Vorlage, Kategorien, Unterschriften und Wikitext. „Änderungen verwerfen“ holt den Stand aus Lightroom zurück.",
     clearedAll: "Alle Einträge gelöscht – noch nicht gespeichert.",
+    swapNoCat: "Keine Kategorie zu {0} gefunden – bitte Kategorien prüfen.",
+    swapBtn: "Person tauschen",
+    swapBtnCancel: "Tausch abbrechen",
+    swapBtnTip: "Streicht diese Person durch; die nächste Person, die du unten suchst, ersetzt sie in Unterschriften, Kategorien und Wikitext.",
+    fnTitle: "Dateiname (Vorschlag)",
+    fnHint: "Aus der englischen Unterschrift (ersatzweise der ersten vorhandenen), ohne Dateiendung und ohne Zeichen, die Commons in Dateinamen nicht erlaubt.",
+    fnCopy: "Kopieren",
+    fnCopied: "Dateiname kopiert.",
+    fnCopyDe: "Deutsche Unterschrift kopieren",
+    fnCopyEn: "Englische Unterschrift kopieren",
+    fnCopiedLang: "Unterschrift ({0}) als Dateiname kopiert.",
+    fnNoLang: "Keine Unterschrift in dieser Sprache.",
+    fnNone: "(noch keine Unterschrift)",
     wdLinkTip: "{0} auf Wikidata öffnen (neuer Tab) – z. B. um gleichnamige Personen zu unterscheiden"
   },
   en: {
@@ -611,6 +648,19 @@ var STRINGS = {
     clearAll: "Clear all entries",
     clearAllTip: "Empties Depicts, Created during, template, categories, captions and wikitext. “Discard changes” brings back the state from Lightroom.",
     clearedAll: "All entries cleared – not saved yet.",
+    swapNoCat: "No category for {0} found – please check the categories.",
+    swapBtn: "Swap person",
+    swapBtnCancel: "Cancel swap",
+    swapBtnTip: "Strikes this person out; the next person you search for below replaces them in captions, categories and wikitext.",
+    fnTitle: "File name (suggestion)",
+    fnHint: "Taken from the English caption (otherwise the first one present), without file extension and without characters Commons does not allow in file names.",
+    fnCopy: "Copy",
+    fnCopied: "File name copied.",
+    fnCopyDe: "Copy German caption",
+    fnCopyEn: "Copy English caption",
+    fnCopiedLang: "Caption ({0}) copied as file name.",
+    fnNoLang: "No caption in this language.",
+    fnNone: "(no caption yet)",
     wdLinkTip: "Open {0} on Wikidata (new tab) – e.g. to tell people with the same name apart"
   }
 };
@@ -1454,7 +1504,7 @@ var SWAP = (function(){
      angefasst, wenn sie genau auf den alten Artikel oder die alte Kategorie
      zeigen; alle anderen Links bleiben unveraendert, ihr Text wird nicht
      durchsucht. Der neu eingesetzte Text wird nie ein zweites Mal geprueft. */
-  function wikitext(text, alt, neu, info, altNamen, neuName, res){
+  function wikitext(text, alt, neu, info, istAlt, neuName, res){
     if (!text) return text;
     var labels = info.labels || {}, sl = info.sitelinks || {};
     return String(text).split("\n").map(function(zeile){
@@ -1494,7 +1544,7 @@ var SWAP = (function(){
         var c = inner.match(/^((?:category|kategorie)\s*:\s*)([^|]*)(.*)$/i);
         if (c && neuName) {
           var name = c[2].trim();
-          if (altNamen[name.toLowerCase()] && name.toLowerCase() !== neuName.toLowerCase()) {
+          if (istAlt(name)) {
             res.wikitext++;
             return "[[" + c[1] + neuName + c[3] + "]]";
           }
@@ -1539,16 +1589,30 @@ var SWAP = (function(){
       }
     });
 
-    var altNamen = {};
-    (info.catAlt || []).concat(alt.label ? [alt.label] : []).forEach(function(n){
-      if (n) altNamen[String(n).toLowerCase()] = true;
-    });
+    /* Welche Kategorien gehoeren zur alten Person? Verglichen wird ohne
+       Gross-/Kleinschreibung und mit Unterstrich = Leerzeichen. Ein
+       Zusatz in Klammern zaehlt NICHT zum selben Namen: "Anna Alt (film)"
+       ist eine andere Kategorie als "Anna Alt". Kandidaten: Commons-Kategorie (P373), Commons-Link des
+       Items, alle geholten Bezeichnungen und die des Chips. */
+    function norm(n){
+      return String(n).toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    }
+    var altSet = {};
+    function merke(n){ if (n && String(n).trim()) altSet[norm(n)] = true; }
+    (info.catAlt || []).forEach(merke);
+    merke(alt.label);
+    Object.keys(info.labels || {}).forEach(function(l){ merke(info.labels[l].alt); });
     var neuName = info.catNeu || neu.label || "";
-    st.freetext = wikitext(st.freetext, alt, neu, info, altNamen, neuName, res);
+    function istAlt(name){
+      var n = norm(name);
+      if (!n || n === norm(neuName)) return false;
+      return !!altSet[n];
+    }
+    st.freetext = wikitext(st.freetext, alt, neu, info, istAlt, neuName, res);
     if (neuName) {
       var out = [], gesehen = {};
       st.categories.forEach(function(c){
-        var ist = altNamen[c.toLowerCase()] && c.toLowerCase() !== neuName.toLowerCase();
+        var ist = istAlt(c);
         var name = ist ? neuName : c;
         if (ist) res.categories++;
         if (!gesehen[name.toLowerCase()]) { gesehen[name.toLowerCase()] = true; out.push(name); }
@@ -1587,7 +1651,8 @@ function swapPerson(alt, neu){
   setStatus(t("searching"));
   api({ action:"wbgetentities", ids: alt.id + "|" + neu.id,
         props:"claims|labels|sitelinks",
-        sitefilter: langs.slice(0, 20).map(COMPOSE.langToWiki).join("|"),
+        sitefilter: langs.slice(0, 20).map(COMPOSE.langToWiki)
+                         .concat(["commonswiki"]).join("|"),
         languages: langs.slice(0, 20).join("|") })
   .then(function(d){
     var ents = d.entities || {}, ea = ents[alt.id], en = ents[neu.id];
@@ -1603,10 +1668,18 @@ function swapPerson(alt, neu){
       info.labels[l] = { alt: lab(ea, l), neu: lab(en, l) };
       info.sitelinks[l] = { alt: site(ea, l), neu: site(en, l) };
     });
-    var a373 = p373Oder(ea);
+    /* Kategorie-Name: P373, sonst der Commons-Link des Items (wenn er auf
+       eine Kategorie zeigt), sonst die englische Bezeichnung. */
+    function commonsKat(e){
+      var q = e && e.sitelinks && e.sitelinks.commonswiki;
+      var tt = (q && q.title) || "";
+      return /^Category:/i.test(tt) ? tt.replace(/^Category:/i, "").trim() : "";
+    }
+    var a373 = p373Oder(ea), aCom = commonsKat(ea);
     if (a373) info.catAlt.push(a373);
+    if (aCom) info.catAlt.push(aCom);
     if (lab(ea, "en")) info.catAlt.push(lab(ea, "en"));
-    info.catNeu = p373Oder(en) || lab(en, "en");
+    info.catNeu = p373Oder(en) || commonsKat(en) || lab(en, "en");
     if (!neu.label) neu.label = lab(en, UI) || lab(en, "en");
     return info;
   })
@@ -1619,8 +1692,9 @@ function swapPerson(alt, neu){
     touch(); renderDepicts(); renderCaptions(); renderCategories();
     document.getElementById("freetext").value = state.freetext;
     var n1 = alt.label || alt.id, n2 = neu.label || neu.id;
+    var katHinweis = res.categories ? "" : " " + t("swapNoCat", n1);
     setStatus((res.captions || res.categories || res.wikitext)
-      ? t("swapDone", n1, n2, res.captions, res.categories, res.wikitext)
+      ? t("swapDone", n1, n2, res.captions, res.categories, res.wikitext) + katHinweis
       : t("swapNothing", n1, n2));
   });
 }
@@ -1640,10 +1714,17 @@ function renderDepicts(){
   box.innerHTML = "";
   if (!state.depicts.length) { emptyNote(box, t("depictsEmpty")); return; }
   state.depicts.forEach(function(e, i){
-    box.appendChild(chip(e.id, e.label, function(){
+    var wrap = document.createElement("span");
+    wrap.className = "chipwrap" + (swapIdx === i ? " swapping" : "");
+    wrap.appendChild(chip(e.id, e.label, function(){
       if (swapIdx === i) swapIdx = -1;
       state.depicts.splice(i, 1); touch(); renderDepicts();
-    }, function(){
+    }));
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "swapbtn";
+    b.textContent = swapIdx === i ? t("swapBtnCancel") : t("swapBtn");
+    b.title = t("swapBtnTip");
+    b.addEventListener("click", function(){
       if (swapIdx === i) {
         swapIdx = -1; renderDepicts(); setStatus(t("swapCancelled"));
         return;
@@ -1651,7 +1732,9 @@ function renderDepicts(){
       swapIdx = i; renderDepicts();
       setStatus(t("swapPending", e.label || e.id));
       document.getElementById("depSearch").focus();
-    }, swapIdx === i));
+    });
+    wrap.appendChild(b);
+    box.appendChild(wrap);
   });
 }
 function renderCreatedDuring(){
@@ -2289,7 +2372,68 @@ function appendCatPreview(pre){
   });
 }
 
+/* ---------------------------------------------------------------------------
+   Dateiname-Vorschlag. Reine Logik ohne DOM (wird ausserhalb des Browsers
+   geprueft). Nimmt die englische Unterschrift, sonst die erste vorhandene;
+   entfernt, was Commons in Dateinamen nicht zulaesst (# < > [ ] | { } : / \
+   und Steuerzeichen), fasst Leerraum zusammen und kuerzt auf 200 Zeichen an
+   einer Wortgrenze. Keine Dateiendung: das Ausgabeformat steht hier nicht fest.
+--------------------------------------------------------------------------- */
+var FILENAME = (function(){
+  function bereinige(text){
+    var t = String(text || "")
+      .replace(/\[\[:?[a-z][a-z0-9-]*:[^|\]]*\|([^\]]*)\]\]/gi, "$1")
+      .replace(/\[\[([^|\]]*)\|([^\]]*)\]\]/g, "$2")
+      .replace(/[\u0000-\u001f\u007f#<>\[\]|{}:\/\\_~]/g, " ")
+      .replace(/%[0-9a-f]{2}/gi, " ")
+      .replace(/\s+/g, " ").trim();
+    if (t.length > 200) {
+      t = t.slice(0, 200);
+      var sp = t.lastIndexOf(" ");
+      if (sp > 120) t = t.slice(0, sp);
+      t = t.trim();
+    }
+    return t.replace(/[.\s]+$/, "");
+  }
+  function vorschlag(captions){
+    var en = "", erste = "";
+    (captions || []).forEach(function(c){
+      var l = String(c.lang || "").trim().toLowerCase();
+      var x = String(c.text || "").trim();
+      if (!x) return;
+      if (l === "en" && !en) en = x;
+      if (!erste) erste = x;
+    });
+    return bereinige(en || erste);
+  }
+  /* Die bereinigte Unterschrift genau einer Sprache, "" wenn es keine gibt. */
+  function ausSprache(captions, lang){
+    var out = "";
+    (captions || []).forEach(function(c){
+      if (!out && String(c.lang || "").trim().toLowerCase() === lang) {
+        out = bereinige(c.text);
+      }
+    });
+    return out;
+  }
+  return { bereinige: bereinige, vorschlag: vorschlag, ausSprache: ausSprache };
+})();
+
+function renderFilename(){
+  var out = document.getElementById("fnOut");
+  if (!out) return;
+  var v = FILENAME.vorschlag(state.captions);
+  out.value = v;
+  out.placeholder = t("fnNone");
+  document.getElementById("fnCopy").disabled = !v;
+  ["De", "En"].forEach(function(L){
+    document.getElementById("fnCopy" + L).disabled =
+      !FILENAME.ausSprache(state.captions, L.toLowerCase());
+  });
+}
+
 function renderPreview(){
+  renderFilename();
   var pre = document.getElementById("preview");
   var text = buildWikitext();
   pre.innerHTML = "";
@@ -2927,6 +3071,27 @@ function init(){
   });
 
   document.getElementById("composeBtn").addEventListener("click", composeAll);
+  document.getElementById("fnCopy").addEventListener("click", function(){
+    var v = document.getElementById("fnOut").value;
+    copyText(v).then(function(){ setStatus(t("fnCopied"), "done"); })
+      .catch(function(){
+        document.getElementById("fnOut").select();
+        setStatus(t("copyFailed"));
+      });
+  });
+  ["de", "en"].forEach(function(lang){
+    var id = "fnCopy" + lang.charAt(0).toUpperCase() + lang.slice(1);
+    document.getElementById(id).addEventListener("click", function(){
+      var v = FILENAME.ausSprache(state.captions, lang);
+      if (!v) { setStatus(t("fnNoLang")); return; }
+      copyText(v).then(function(){
+        setStatus(t("fnCopiedLang", lang.toUpperCase()), "done");
+      }).catch(function(){ setStatus(t("copyFailed")); });
+    });
+  });
+  document.getElementById("fnOut").addEventListener("focus", function(){
+    this.select();
+  });
 
   document.getElementById("copyPreviewBtn").addEventListener("click", function(){
     copyText(buildWikitext())

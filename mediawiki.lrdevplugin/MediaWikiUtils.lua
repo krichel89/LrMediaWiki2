@@ -56,6 +56,48 @@ MediaWikiUtils.trim = function(str)
 	--- or http://lua-users.org/wiki/CommonFunctions
 end
 
+-- Does a (new) upload file name carry any meaning? Commons file names should
+-- describe the picture; names straight from the camera or its numbering do
+-- not. Pure function - no Lightroom calls - so it can be checked outside
+-- Lightroom. Takes the leaf name (with or without extension) and returns nil
+-- if the name is acceptable, otherwise a reason code:
+--   'leadingUnderscore'  starts with "_"  (e.g. _DSC1234, _MG_5678)
+--   'cameraName'         a camera prefix followed by a number (IMG_1234,
+--                        DSC01234, DSCF0042 ...)
+--   'noMeaning'          fewer than two words of two or more letters, or no
+--                        word of three or more letters (KRI_2026_1834,
+--                        A7R04312, 20260101 ...): a random camera counter
+-- Letters include bytes >= 128 so that umlauts and other UTF-8 letters count.
+local CAMERA_PREFIXES = {
+	'IMGP', 'IMG', 'DSCF', 'DSCN', 'DSC', 'DSF', 'MVI', 'GOPR', 'DJI', 'PXL',
+	'PICT', 'SAM', 'SDC', 'CIMG', 'DCP', 'IMAG',
+}
+MediaWikiUtils.fileNameProblem = function(leafName)
+	local name = tostring(leafName or '')
+	local stem = (name:gsub('%.%w+$', ''))
+	if stem:sub(1, 1) == '_' then
+		return 'leadingUnderscore'
+	end
+	local upper = stem:upper()
+	for _, prefix in ipairs(CAMERA_PREFIXES) do
+		if upper:sub(1, #prefix) == prefix then
+			local rest = upper:sub(#prefix + 1)
+			if rest:match('^[_%-%s]*%d') then
+				return 'cameraName'
+			end
+		end
+	end
+	local words, long = 0, 0
+	for word in stem:gmatch('[%a\128-\255]+') do
+		if #word >= 2 then words = words + 1 end
+		if #word >= 3 then long = long + 1 end
+	end
+	if words < 2 or long < 1 then
+		return 'noMeaning'
+	end
+	return nil
+end
+
 MediaWikiUtils.getFirstKey = function(table)
 	for key, value in pairs(table) do -- luacheck: ignore ("loop is executed at most once")
 		return key

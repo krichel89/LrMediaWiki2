@@ -234,6 +234,7 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 	local commentSuffix = ' (LrMediaWiki ' .. MediaWikiUtils.getVersionString() .. ')' -- for updates
 
 	local ignorewarnings = false
+	local isNewFile = false
 	if MediaWikiApi.existsFile(targetFileName) then
 		if MediaWikiUtils.isStringEmpty(updateCommentForAll) then
 			local message = LOC "$$$/LrMediaWiki/Interface/InUse=File name already in use"
@@ -269,6 +270,7 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 			ignorewarnings = true
 		end
 	else -- targetFileName exists not, the file is a new upload. New files need a description.
+		isNewFile = true
 		if not hasDescription then
 			return LOC "$$$/LrMediaWiki/Export/NoDescription=No description given for this file!"
 		end
@@ -276,6 +278,23 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 			LrDialogs.message(LOC "$$$/LrMediaWiki/Interface/NoUpload=Information: No upload of this new file in mode “Update only”",
 								LOC "$$$/LrMediaWiki/Interface/NoUploadFile=File" .. ': ' .. targetFileName)
 			return nil -- Don't upload if it's a new file
+		end
+	end
+	-- A NEW file must get a name with meaning. Existing files are only
+	-- updated under the name they already have, so that is not checked. A
+	-- finding means: do not upload, report it (Lightroom lists the message
+	-- with the failed files at the end of the export).
+	if isNewFile then
+		local problem = MediaWikiUtils.fileNameProblem(targetFileName)
+		if problem then
+			MediaWikiUtils.trace('Upload refused, file name has no meaning ('
+				.. problem .. '): ' .. tostring(targetFileName))
+			if problem == 'leadingUnderscore' then
+				return LOC("$$$/LrMediaWiki/Export/NameUnderscore=Not uploaded: the file name \"^1\" starts with an underscore. Please give the file a descriptive name.", targetFileName)
+			elseif problem == 'cameraName' then
+				return LOC("$$$/LrMediaWiki/Export/NameCamera=Not uploaded: the file name \"^1\" is a camera name (IMG, DSC ...). Please give the file a descriptive name.", targetFileName)
+			end
+			return LOC("$$$/LrMediaWiki/Export/NameNoMeaning=Not uploaded: the file name \"^1\" has no descriptive meaning (at least two words are needed, not a camera counter). Please give the file a descriptive name.", targetFileName)
 		end
 	end
 	local uploadResult = MediaWikiApi.upload(targetFileName, filePath, description, comment, ignorewarnings)

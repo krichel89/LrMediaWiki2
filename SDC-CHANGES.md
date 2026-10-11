@@ -1,5 +1,59 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.10
+
+- **File names are checked for meaning before a NEW file is uploaded.** A file
+  whose name has no descriptive meaning is **not uploaded**; instead the
+  export reports it (Lightroom lists the message with the failed files at the
+  end of the export), the other files carry on. Refused are:
+  - names starting with an underscore (`_DSC1234`, `_MG_5678`);
+  - camera names: `IMG`, `IMGP`, `DSC`, `DSCF`, `DSCN`, `DSF`, `MVI`, `GOPR`,
+    `DJI`, `PXL`, `PICT`, `SAM`, `SDC`, `CIMG`, `DCP`, `IMAG` followed by a
+    number (`IMG_1234`, `DSC01234`);
+  - names without meaning: fewer than two words of two or more letters, or no
+    word of three or more letters - this catches camera counters such as
+    `A7R04312`, `20260101` and `KRI_2026_1834`. Words may be separated by
+    spaces, underscores or hyphens; umlauts count as letters.
+  Files that already exist on Commons are only updated under their existing
+  name and are not checked. A name entered via "Rename" is checked as well.
+  New German texts for the three messages are in `TranslatedStrings_de.txt`.
+
+## Version 2.1.9
+
+- **Copy the German or the English caption as a file name.** Two more
+  buttons in the "File name" section copy the cleaned caption of exactly that
+  language, independent of which one the suggestion picked. A button is
+  disabled while that language has no caption.
+
+## Version 2.1.8
+
+- **Swap person finds the person's category more reliably.** The category is
+  now recognised when it matches any of: the Commons category of the old
+  item (P373), the title of its Commons sitelink if that is a category, any
+  label fetched from Wikidata (all caption languages and English) or the label
+  on the chip - compared without case and with underscore equal to space. A
+  trailing parenthetical is NOT guessed away: "Name (film)" stays a different
+  category from "Name".
+  The new person's category is taken from P373, otherwise from the Commons
+  sitelink, otherwise the English label.
+- If no category could be matched, the status line now says so instead of
+  staying silent, so a missed rename is visible.
+
+## Version 2.1.7
+
+- **Swapping a person is now a big, labelled button.** Every chip in
+  "Depicts" has a **"Swap person"** button next to it (the small arrows icon
+  is gone). Pressing it strikes the old person out and puts the focus into the
+  search field; the next person you pick replaces the struck-out one in
+  captions, categories and wikitext. The button then reads "Cancel swap";
+  Esc cancels as well.
+- **File name suggestion.** New section "File name (suggestion)": the English
+  caption (otherwise the first caption present), cleaned for Commons - no
+  `# < > [ ] | { } : / \`, no control characters, no `%xx`, link markup
+  reduced to its text, whitespace collapsed, at most 200 characters, cut at a
+  word boundary - with a **Copy** button. No file extension (the output format
+  is not known here) and no running number.
+
 ## Version 2.1.6
 
 Switching from one group of photos to the next, in the same browser tab.
