@@ -250,6 +250,20 @@ footer .status.done{color:var(--accent)}
 
 <main>
   <div>
+    <!-- Veranstaltungs-Set ------------------------------------------------- -->
+    <section id="secSets">
+      <h2 data-i18n="setTitle">Veranstaltungs-Set</h2>
+      <p class="hint" data-i18n="setHint"></p>
+      <div class="rowline">
+        <select id="setSel" aria-label="Set"></select>
+        <button id="setDel" type="button" data-i18n="setDelete">Set löschen</button>
+      </div>
+      <div class="rowline" style="margin-top:.4rem">
+        <input type="text" id="setName" data-i18n-ph="setNamePh" autocomplete="off" maxlength="60">
+        <button id="setSave" type="button" data-i18n="setSave">Als Set speichern</button>
+      </div>
+    </section>
+
     <!-- Depicts ------------------------------------------------------------ -->
     <section id="secDepicts">
       <h2><span data-i18n="depictsTitle">Zeigt</span> <span class="pid">P180</span></h2>
@@ -282,6 +296,15 @@ footer .status.done{color:var(--accent)}
         <input type="text" id="tplInput" data-i18n-ph="tplPh" autocomplete="off">
       </div>
       <div class="results" id="tplResults"></div>
+    </section>
+
+    <!-- Galerie ------------------------------------------------------------ -->
+    <section id="secGalerie">
+      <h2 data-i18n="galTitle">Galerie (optional)</h2>
+      <p class="hint" data-i18n="galHint"></p>
+      <div class="rowline">
+        <input type="text" id="galInput" data-i18n-ph="galPh" autocomplete="off" spellcheck="false">
+      </div>
     </section>
 
     <!-- Kategorien --------------------------------------------------------- -->
@@ -485,6 +508,19 @@ var STRINGS = {
     tplTitle: "Vorlage der Veranstaltung",
     tplHint: "Commons-Vorlage der Veranstaltung, z. B. {{WikiPortraits Venice Film Festival 2026}}. Sie steht auf der Dateiseite hinter der Infobox, nicht in der Beschreibung.",
     tplPh: "{{WikiPortraits …}}",
+    setTitle: "Veranstaltungs-Set",
+    setHint: "Veranstaltung (Q-Nummer), Vorlage, Galerie und Kategorien gemeinsam wählen. Ein Set wird erst mit „Speichern“ in Lightroom dauerhaft abgelegt.",
+    setNone: "– Set wählen –",
+    setNamePh: "Name für ein neues Set",
+    setSave: "Als Set speichern",
+    setDelete: "Set löschen",
+    setApplied: "Set „{0}“ übernommen (Kategorien ersetzt: {1}).",
+    setSaved: "Set „{0}“ gespeichert (Kategorien: {1}) – dauerhaft, sobald du in Lightroom speicherst.",
+    setDeleted: "Set „{0}“ gelöscht – dauerhaft, sobald du in Lightroom speicherst.",
+    setNeedName: "Bitte erst einen Namen für das Set eingeben.",
+    galTitle: "Galerie (optional)",
+    galHint: "Commons-Seite, auf der die hochgeladenen Dateien als Galerie ergänzt werden, z. B. Commons:Frankfurter Buchmesse 2026/Porträts. Gilt für dieses Foto und ersetzt die Galerie aus dem Export-Dialog.",
+    galPh: "Seitentitel auf Commons",
     save: "Speichern und zu Lightroom",
     revert: "Änderungen verwerfen",
     copy: "In die Zwischenablage",
@@ -502,6 +538,7 @@ var STRINGS = {
     noQids: "Keine Nummern eingetragen, aus denen sich Kategorien ableiten ließen.",
     catsAdded: "{0} Kategorie(n) ergänzt – bitte prüfen.",
     nothingNew: "Nichts Neues gefunden.",
+    catsMissing: "Keine Commons-Kategorie hinterlegt (weder P373 noch Commons-Link auf eine Kategorie) bei: {0}.",
     allInWikitext: "Es steht schon alles im Wikitext.",
     linesAppended: "{0} Zeile(n) an den Wikitext angehängt.",
     reverted: "Auf den Stand aus Lightroom zurückgesetzt.",
@@ -602,6 +639,19 @@ var STRINGS = {
     tplTitle: "Event template",
     tplHint: "Commons template for the event, e.g. {{WikiPortraits Venice Film Festival 2026}}. It appears on the file page after the infobox, not inside the description.",
     tplPh: "{{WikiPortraits …}}",
+    setTitle: "Event set",
+    setHint: "Pick event (item number), template, gallery and categories together. A set is stored permanently only when you save in Lightroom.",
+    setNone: "– choose a set –",
+    setNamePh: "Name for a new set",
+    setSave: "Save as set",
+    setDelete: "Delete set",
+    setApplied: "Set \"{0}\" applied (categories replaced: {1}).",
+    setSaved: "Set \"{0}\" saved (categories: {1}) – permanent once you save in Lightroom.",
+    setDeleted: "Set \"{0}\" deleted – permanent once you save in Lightroom.",
+    setNeedName: "Please enter a name for the set first.",
+    galTitle: "Gallery (optional)",
+    galHint: "Commons page to which the uploaded files are added as a gallery, e.g. Commons:Frankfurt Book Fair 2026/Portraits. Applies to this photo and replaces the gallery of the export dialog.",
+    galPh: "Page title on Commons",
     save: "Save and back to Lightroom",
     revert: "Discard changes",
     copy: "Copy to clipboard",
@@ -619,6 +669,7 @@ var STRINGS = {
     noQids: "No item numbers entered that categories could be derived from.",
     catsAdded: "{0} category/categories added – please check.",
     nothingNew: "Nothing new found.",
+    catsMissing: "No Commons category on record (neither P373 nor a Commons link to a category) for: {0}.",
     allInWikitext: "Everything is in the wikitext already.",
     linesAppended: "{0} line(s) appended to the wikitext.",
     reverted: "Reset to the state from Lightroom.",
@@ -746,7 +797,7 @@ function neuItemUrl(){
 --------------------------------------------------------------------------- */
 var state = { depicts: [], createdDuring: null, categories: [], captions: [],
               freetext: "", connectors: {}, forms: {}, workflow: "",
-              applyToAll: false, eventTemplate: "" };
+              applyToAll: false, eventTemplate: "", gallery: "" };
 
 /* Was Wikidata ueber die benutzten Q-Items weiss. Wird beim Erzeugen gefuellt
    und dann in COMPOSE hineingegeben. */
@@ -774,6 +825,18 @@ function parseToken(tok){
 }
 function tokenText(e){ return e.label ? e.id + " # " + e.label : e.id; }
 
+var SETS = null;
+function cleanSets(x){
+  return (Array.isArray(x) ? x : []).filter(function(s){
+    return s && typeof s.name === "string" && s.name;
+  }).map(function(s){
+    return { name: String(s.name), createdDuring: String(s.createdDuring || ""),
+             eventTemplate: String(s.eventTemplate || ""),
+             gallery: String(s.gallery || ""),
+             categories: Array.isArray(s.categories) ? s.categories.map(String) : [] };
+  });
+}
+
 function load(){
   state.depicts = splitTokens(PAYLOAD.depicts).map(parseToken)
                   .filter(Boolean);
@@ -781,6 +844,11 @@ function load(){
   state.createdDuring = cd.length ? cd[0] : null;
   state.categories = splitCats(PAYLOAD.categories);
   state.eventTemplate = String(PAYLOAD.eventTemplate || "").trim();
+  state.gallery = String(PAYLOAD.gallery || "").trim();
+  /* Veranstaltungs-Sets nur beim ERSTEN Laden uebernehmen: bei einem
+     Fotowechsel stuende sonst der Stand aus den Voreinstellungen wieder da
+     und verwuerfe, was im Tab noch nicht gespeichert ist. */
+  if (SETS === null) SETS = cleanSets(PAYLOAD.eventSets);
   /* Gelernte Fuegungen kommen aus den Lightroom-Voreinstellungen mit. NICHT
      im localStorage halten: die Seite laeuft unter einem neuen Port bei jedem
      Start der Bruecke, und der Port gehoert zur Herkunft - der Speicher waere
@@ -1417,6 +1485,80 @@ function wireTemplateInput(){
 
 function renderTemplate(){
   document.getElementById("tplInput").value = state.eventTemplate || "";
+  document.getElementById("galInput").value = state.gallery || "";
+}
+
+/* ---------------------------------------------------------------------------
+   Veranstaltungs-Sets: Q-Nummer, Vorlage, Galerie und Kategorien als Einheit.
+   Liegen in den Voreinstellungen von Lightroom (nicht im Browserspeicher,
+   dessen Herkunft bei jedem Start einen neuen Port hat) und reisen mit dem
+   Ergebnis zurueck. Beim Uebernehmen ERSETZEN die Kategorien des Sets die bisherigen.
+--------------------------------------------------------------------------- */
+function renderSets(){
+  var sel = document.getElementById("setSel");
+  sel.innerHTML = "";
+  var o = document.createElement("option");
+  o.value = ""; o.textContent = t("setNone");
+  sel.appendChild(o);
+  SETS.forEach(function(s, i){
+    var op = document.createElement("option");
+    op.value = String(i); op.textContent = s.name;
+    sel.appendChild(op);
+  });
+  document.getElementById("setDel").disabled = SETS.length === 0;
+}
+
+function applySet(s){
+  state.createdDuring = parseToken(s.createdDuring) || null;
+  state.eventTemplate = s.eventTemplate || "";
+  state.gallery = s.gallery || "";
+  state.categories = s.categories.slice();
+  touch(); renderCreatedDuring(); renderCategories(); renderTemplate(); renderPreview();
+  setStatus(t("setApplied", s.name, s.categories.length), "dirty");
+}
+
+function wireSets(){
+  var sel = document.getElementById("setSel");
+  sel.addEventListener("change", function(){
+    var i = parseInt(sel.value, 10);
+    if (isNaN(i) || !SETS[i]) return;
+    applySet(SETS[i]);
+  });
+  document.getElementById("setSave").addEventListener("click", function(){
+    var nameBox = document.getElementById("setName");
+    var name = nameBox.value.trim();
+    if (!name) {
+      /* Ein gewaehltes Set ohne neuen Namen wird ueberschrieben. */
+      var cur = parseInt(sel.value, 10);
+      if (!isNaN(cur) && SETS[cur]) name = SETS[cur].name;
+    }
+    if (!name) { setStatus(t("setNeedName")); return; }
+    var neu = { name: name.slice(0, 60),
+                createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
+                eventTemplate: state.eventTemplate || "",
+                gallery: state.gallery || "",
+                categories: state.categories.slice() };
+    var idx = -1;
+    SETS.forEach(function(s, i){ if (s.name.toLowerCase() === neu.name.toLowerCase()) idx = i; });
+    if (idx >= 0) SETS[idx] = neu; else if (SETS.length < 30) { SETS.push(neu); idx = SETS.length - 1; }
+    else idx = -1;
+    nameBox.value = "";
+    renderSets();
+    if (idx >= 0) sel.value = String(idx);
+    touch();
+    setStatus(t("setSaved", neu.name, neu.categories.length), "dirty");
+  });
+  document.getElementById("setDel").addEventListener("click", function(){
+    var i = parseInt(sel.value, 10);
+    if (isNaN(i) || !SETS[i]) return;
+    var weg = SETS.splice(i, 1)[0];
+    renderSets(); touch();
+    setStatus(t("setDeleted", weg.name), "dirty");
+  });
+  document.getElementById("galInput").addEventListener("input", function(){
+    state.gallery = this.value.trim();
+    touch(); renderPreview();
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1703,7 +1845,7 @@ function clearAll(){
   swapIdx = -1;
   forcedFields = null;
   state.depicts = []; state.createdDuring = null; state.categories = [];
-  state.eventTemplate = ""; state.freetext = "";
+  state.eventTemplate = ""; state.gallery = ""; state.freetext = "";
   state.captions.forEach(function(c){ c.text = ""; });
   touch(); renderAll();
   setStatus(t("clearedAll"), "dirty");
@@ -2313,6 +2455,11 @@ function buildWikitext(){
   if (state.eventTemplate) {
     daten.push("event_template=" + state.eventTemplate);
   }
+  /* Galerie dieses Fotos (Veranstaltungs-Set): eigener Schluessel wie die
+     Vorlage, beim Hochladen ersetzt er die Galerie des Export-Dialogs. */
+  if (state.gallery) {
+    daten.push("gallery=" + state.gallery);
+  }
 
   /* Der Freitext kann Ueberschriften aus einem frueheren Durchlauf
      enthalten - sie duerfen sich nicht vermehren. */
@@ -2474,7 +2621,7 @@ function renderPreview(){
 
 function renderAll(){
   renderDepicts(); renderCreatedDuring(); renderCategories();
-  renderCaptions(); renderConnectors(); renderTemplate(); renderPreview();
+  renderCaptions(); renderConnectors(); renderTemplate(); renderSets(); renderPreview();
   document.getElementById("freetext").value = state.freetext;
   applyWorkflowView();
   renderApplyAll();
@@ -2490,7 +2637,9 @@ function touch(){
 
 /* ---------------------------------------------------------------------------
    Kategorievorschläge: zu jeder eingetragenen Nummer die Commons-Kategorie
-   (P373) holen, ersatzweise die englische Bezeichnung.
+   (P373) holen, ersatzweise den Commons-Link des Items, sofern er auf eine
+   KATEGORIE zeigt. Nichts wird erfunden: gibt es beides nicht, wird keine
+   Kategorie vorgeschlagen (kein Raten aus der Bezeichnung).
 --------------------------------------------------------------------------- */
 function suggestCategories(){
   var ids = state.depicts.map(function(e){ return e.id; });
@@ -2501,9 +2650,9 @@ function suggestCategories(){
   var old = btn.textContent;
   btn.textContent = t("searching");
   api({ action:"wbgetentities", ids:ids.slice(0,50).join("|"),
-        props:"claims|labels", languages:"en" })  /* Kategorienamen sind englisch */
+        props:"claims|sitelinks", sitefilter:"commonswiki" })
   .then(function(d){
-    var ents = d.entities || {}, added = 0;
+    var ents = d.entities || {}, added = 0, ohne = [];
     var have = {};
     state.categories.forEach(function(c){ have[c.toLowerCase()] = true; });
     ids.forEach(function(id){
@@ -2519,7 +2668,12 @@ function suggestCategories(){
           name = c.mainsnak.datavalue.value.trim(); break;
         }
       }
-      if (!name && e.labels && e.labels.en) name = e.labels.en.value.trim();
+      if (!name) {
+        var sl = e.sitelinks && e.sitelinks.commonswiki;
+        var tt = (sl && sl.title) || "";
+        if (/^Category:/i.test(tt)) name = tt.replace(/^Category:/i, "").trim();
+      }
+      if (!name) { ohne.push(id); return; }
       if (name && !have[name.toLowerCase()]) {
         have[name.toLowerCase()] = true;
         state.categories.push(name);
@@ -2527,8 +2681,9 @@ function suggestCategories(){
       }
     });
     renderCategories();
-    if (added) { touch(); setStatus(t("catsAdded", added)); }
-    else setStatus(t("nothingNew"));
+    var hinweis = ohne.length ? " " + t("catsMissing", ohne.join(", ")) : "";
+    if (added) { touch(); setStatus(t("catsAdded", added) + hinweis); }
+    else setStatus(t("nothingNew") + hinweis);
   })
   .catch(function(){ setStatus(t("offline")); })
   .then(function(){ btn.disabled = false; btn.textContent = old; });
@@ -2629,7 +2784,8 @@ function coreOut(){
     categories: state.categories.join("; "),
     captions: caps,
     freetext: state.freetext || "",
-    eventTemplate: state.eventTemplate || ""
+    eventTemplate: state.eventTemplate || "",
+    gallery: state.gallery || ""
   };
 }
 
@@ -2657,7 +2813,8 @@ function changedFields(){
     categories:    now.categories    !== (was.categories || ""),
     captions:      JSON.stringify(now.captions) !== JSON.stringify(was.captions || {}),
     freetext:      now.freetext      !== (was.freetext || ""),
-    eventTemplate: now.eventTemplate !== (was.eventTemplate || "")
+    eventTemplate: now.eventTemplate !== (was.eventTemplate || ""),
+    gallery:       now.gallery       !== (was.gallery || "")
   };
   if (forcedFields) {
     Object.keys(forcedFields).forEach(function(k){
@@ -2668,7 +2825,7 @@ function changedFields(){
      Freitext zusammengesetzt - es gilt als geändert, sobald eines davon
      sich geändert hat. Die Kategorien stehen NICHT darin. */
   ch.wikitext = ch.depicts || ch.createdDuring || ch.captions || ch.freetext
-              || ch.eventTemplate;
+              || ch.eventTemplate || ch.gallery;
   return ch;
 }
 
@@ -2692,6 +2849,8 @@ function payloadOut(){
     captions: caps,
     freetext: core.freetext,
     eventTemplate: core.eventTemplate,
+    gallery: core.gallery,
+    eventSets: SETS || [],
     wikitext: buildWikitext(),
     /* Welche Felder der Nutzer seit dem Öffnen angefasst hat. Das aktive
        Foto bekommt immer alles; die übrigen markierten nur diese hier. */
@@ -2784,6 +2943,7 @@ function adoptState(p, kept){
     state.depicts = kept.depicts; state.createdDuring = kept.createdDuring;
     state.categories = kept.categories; state.captions = kept.captions;
     state.freetext = kept.freetext; state.eventTemplate = kept.eventTemplate;
+    state.gallery = kept.gallery || "";
     state.workflow = kept.workflow;
     /* Bei einer neuen Mehrfachauswahl gehoert der Satz zu ALLEN markierten
        Fotos - dafuer ist der Wechsel gedacht. Abschalten bleibt moeglich. */
@@ -2793,7 +2953,8 @@ function adoptState(p, kept){
       depicts: kc.depicts !== "", createdDuring: kc.createdDuring !== "",
       categories: kc.categories !== "",
       captions: Object.keys(kc.captions).length > 0,
-      freetext: kc.freetext !== "", eventTemplate: kc.eventTemplate !== ""
+      freetext: kc.freetext !== "", eventTemplate: kc.eventTemplate !== "",
+      gallery: kc.gallery !== ""
     };
     touch();
   } else if (applyWorkflowPrefill()) touch();
@@ -2874,6 +3035,7 @@ function onBridgeState(env){
       depicts: state.depicts, createdDuring: state.createdDuring,
       categories: state.categories, captions: state.captions,
       freetext: state.freetext, eventTemplate: state.eventTemplate,
+      gallery: state.gallery,
       workflow: state.workflow, applyToAll: state.applyToAll }));
     pendingState = null;
     adoptState(env.state, k);
@@ -3021,6 +3183,7 @@ function init(){
 
   wireCategoryInput();
   wireTemplateInput();
+  wireSets();
   document.getElementById("catSuggest").addEventListener("click", suggestCategories);
 
   document.getElementById("capAdd").addEventListener("click", function(){

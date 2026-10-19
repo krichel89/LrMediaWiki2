@@ -450,7 +450,7 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	-- other keys - so it does NOT stay inside the description - and placed
 	-- after the infobox further down, where templates belong.
 	local sdKeys = { 'creator', 'copyright', 'license', 'depicts',
-		'created_during', 'event_template' }
+		'created_during', 'event_template', 'gallery' }
 	for _, key in ipairs(sdKeys) do
 		local values = {}
 		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do

@@ -16,6 +16,7 @@
 
 local LrPrefs = import 'LrPrefs'
 local LrPathUtils = import 'LrPathUtils'
+local json = require 'JSON'
 local LrFileUtils = import 'LrFileUtils'
 
 local MediaWikiSdcData = {}
@@ -61,7 +62,7 @@ MediaWikiSdcData.isHeading = isHeading
 local function parseDescriptionAll(text)
 	text = text or ''
 	text = text:gsub('\r\n', '\n'):gsub('\r', '\n')
-	local captions, depicts, createdDuring, eventTemplate = {}, '', '', ''
+	local captions, depicts, createdDuring, eventTemplate, gallery = {}, '', '', '', ''
 	local freeLines = {}
 	for line in (text .. '\n'):gmatch('(.-)\n') do
 		local handled = isHeading(line)
@@ -95,11 +96,22 @@ local function parseDescriptionAll(text)
 				handled = true
 			end
 		end
+		if not handled then
+			-- Galerieseite fuer genau dieses Foto (Veranstaltungs-Set). Wie
+			-- die Vorlage ein eigener Schluessel und kein Freitext; beim
+			-- Hochladen ersetzt sie die Galerie aus dem Export-Dialog.
+			local gv = line:match('^gallery=(.*)$')
+			if gv then
+				gv = trim(gv)
+				if gv ~= '' then gallery = gv end
+				handled = true
+			end
+		end
 		if not handled then freeLines[#freeLines + 1] = line end
 	end
 	while #freeLines > 0 and trim(freeLines[#freeLines]) == '' do table.remove(freeLines) end
 	while #freeLines > 0 and trim(freeLines[1]) == '' do table.remove(freeLines, 1) end
-	return captions, depicts, createdDuring, table.concat(freeLines, '\n'), eventTemplate
+	return captions, depicts, createdDuring, table.concat(freeLines, '\n'), eventTemplate, gallery
 end
 
 local function injectPayload(html, jsonText)
@@ -214,6 +226,56 @@ local function macOrder(arch)
 	return { 'sdcbridge-mac', 'sdcbridge-mac-arm64', 'sdcbridge-mac-x86_64' }
 end
 
+-- Veranstaltungs-Sets. REIN: sanitizeEventSets nimmt irgendeine Tabelle aus
+-- der Seite und gibt eine bereinigte Liste zurueck (hoechstens 30 Sets,
+-- hoechstens 30 Kategorien je Set, Texte gekuerzt, Steuerzeichen raus).
+local MAX_SETS, MAX_SET_KATS, MAX_SET_TEXT = 30, 30, 300
+local function setText(v)
+	if type(v) ~= 'string' then return '' end
+	v = v:gsub('[%z\1-\31]', ' ')
+	v = trim(v)
+	if #v > MAX_SET_TEXT then v = v:sub(1, MAX_SET_TEXT) end
+	return v
+end
+local function sanitizeEventSets(t)
+	local out, gesehen = {}, {}
+	if type(t) ~= 'table' then return out end
+	for _, s in ipairs(t) do
+		if #out >= MAX_SETS then break end
+		if type(s) == 'table' then
+			local name = setText(s.name)
+			if #name > 60 then name = name:sub(1, 60) end
+			if name ~= '' and not gesehen[name:lower()] then
+				gesehen[name:lower()] = true
+				local kats = {}
+				if type(s.categories) == 'table' then
+					for _, c in ipairs(s.categories) do
+						local k = setText(c)
+						if k ~= '' and #kats < MAX_SET_KATS then kats[#kats + 1] = k end
+					end
+				end
+				out[#out + 1] = {
+					name = name,
+					createdDuring = setText(s.createdDuring),
+					eventTemplate = setText(s.eventTemplate),
+					gallery = setText(s.gallery),
+					categories = kats,
+				}
+			end
+		end
+	end
+	return out
+end
+
+function MediaWikiSdcData.loadEventSets()
+	local text = MediaWikiSdcData.prefs().sdcEventSets
+	if type(text) ~= 'string' or text == '' then return {} end
+	local ok, t = pcall(function() return json:decode(text) end)
+	if not ok then return {} end
+	return sanitizeEventSets(t)
+end
+
+MediaWikiSdcData.sanitizeEventSets = sanitizeEventSets
 MediaWikiSdcData.trim = trim
 MediaWikiSdcData.filled = filled
 MediaWikiSdcData.normalizeQid = normalizeQid
@@ -410,7 +472,7 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 	local categories = photo:getPropertyForPlugin(_PLUGIN, 'categories') or ''
 	local depictsField = photo:getPropertyForPlugin(_PLUGIN, 'depicts') or ''
 	local createdField = photo:getPropertyForPlugin(_PLUGIN, 'created_during') or ''
-	local captions, depicts, createdDuring, freetext, eventTemplate = parseDescriptionAll(descAll)
+	local captions, depicts, createdDuring, freetext, eventTemplate, gallery = parseDescriptionAll(descAll)
 	local captionEn = photo:getPropertyForPlugin(_PLUGIN, 'caption_en') or ''
 	if filled(captionEn) and not filled(captions.en) then captions.en = captionEn end
 	return {
@@ -449,6 +511,11 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 		captions = captions,
 		freetext = freetext,
 		eventTemplate = eventTemplate,
+		gallery = gallery,
+		-- Veranstaltungs-Sets (Name, Q-Nummer, Vorlage, Galerie, Kategorien).
+		-- Als EIN JSON-Text in den Voreinstellungen, weil LrPrefs
+		-- verschachtelte Tabellen nicht zuverlaessig traegt.
+		eventSets = MediaWikiSdcData.loadEventSets(),
 		-- Gelernte Fuegungen fuer den Satzbau. Gehen mit und kommen mit dem
 		-- Ergebnis zurueck; die Seite darf sie nicht selbst dauerhaft halten,
 		-- weil ihre Herkunft bei jedem Start der Bruecke einen neuen Port
@@ -561,6 +628,16 @@ function MediaWikiSdcData.applyResult(catalog, photos, result)
 		local mergedForms = MediaWikiSdcData.mergeConnectors(
 			MediaWikiSdcData.prefs().sdcEventForms, result.forms)
 		pcall(function() MediaWikiSdcData.prefs().sdcEventForms = mergedForms end)
+	end
+
+	-- Veranstaltungs-Sets: die Seite schickt immer die GANZE Liste, auch die
+	-- leere (Loeschen des letzten Sets). Fehlt das Feld, bleibt alles wie es ist.
+	if type(result.eventSets) == 'table' then
+		local sets = sanitizeEventSets(result.eventSets)
+		local ok, text = pcall(function() return json:encode(sets) end)
+		if ok and type(text) == 'string' then
+			pcall(function() MediaWikiSdcData.prefs().sdcEventSets = text end)
+		end
 	end
 
 	-- Ein einzelnes Foto wie eine Liste mit einem Eintrag behandeln.

@@ -1,5 +1,41 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.14
+
+- **Event sets: loading a set now REPLACES the categories** (2.1.13 added
+  them to the existing ones).
+
+## Version 2.1.13
+
+- **Event sets.** New section "Event set" at the top of the editor: event
+  (P10408 item), event template, gallery page and categories are stored
+  together under a name, loaded with one click, overwritten (same name) or
+  deleted. Loading a set sets item, template and gallery and ADDS its
+  categories to the existing ones (never replaces). Sets live in the Lightroom
+  preferences as one JSON text (`sdcEventSets`, max. 30 sets) and travel with
+  the result, so they survive the new port of every bridge start. They are
+  stored when you save in Lightroom, not when you click "Save as set".
+- **Gallery per photo.** New optional field "Gallery" (stored as a
+  `gallery=` line in the description block, like the event template). On
+  upload the files are added to that page; photos without one use the gallery
+  field of the export dialog as before. Files are grouped per target page.
+
+## Version 2.1.12
+
+- **Fix: "Suggest from item numbers" no longer invents categories.** Without
+  P373 it used the English label (e.g. "76th Berlin International Film
+  Festival") as a category name. Now: P373, else the item's Commons link
+  if it points to a `Category:` page, else nothing; items without a category
+  are listed in the status line.
+
+## Version 2.1.11
+
+- **Fix: "Copy source" in the preview failed with `attempt to call field
+  'remove' (a nil value)`.** Lightroom's sandboxed `os` table has no
+  `os.remove`; the temporary clipboard file is now deleted with
+  `LrFileUtils.delete` (Mac and Windows branch). The text was copied
+  before the error, but the error dialog appeared and the temp file stayed.
+
 ## Version 2.1.10
 
 - **File names are checked for meaning before a NEW file is uploaded.** A file

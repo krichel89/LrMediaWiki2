@@ -337,8 +337,9 @@ local copyToClipboard = function(clipboardText, fileName)
 			io.close(fd)
 			LrTasks.execute(copyCmd)
 			-- The file holds the full preview wikitext; do not leave it behind
-			-- (the Mac branch below removes its file too).
-			os.remove(tmpFile)
+			-- (the Mac branch below removes its file too). Lightroom's
+			-- sandboxed os table has no remove(); use LrFileUtils.
+			LrFileUtils.delete(tmpFile)
 		end)
 	elseif MAC_ENV == true then
 		-- Frueher wurde der Text direkt in die Shell-Zeile eingesetzt
@@ -354,7 +355,8 @@ local copyToClipboard = function(clipboardText, fileName)
 			io.close(fd)
 			copyCmd = "export LANG=en_US.UTF-8; pbcopy < '" .. tmpFile .. "'"
 			LrTasks.execute(copyCmd)
-			os.remove(tmpFile)
+			-- os.remove does not exist in Lightroom's sandboxed os table.
+			LrFileUtils.delete(tmpFile)
 		end)
 	end
 end
@@ -860,7 +862,13 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 				if captionForGallery == '' and arguments and arguments.structuredData then
 					captionForGallery = arguments.structuredData.caption_en or ''
 				end
-				fileEntries[#fileEntries + 1] = { fileName = fileName, caption = captionForGallery }
+				-- A gallery= line of the photo (event set) wins over the
+				-- gallery field of the export dialog.
+				local ownGallery = ''
+				if arguments and arguments.structuredData then
+					ownGallery = MediaWikiUtils.trim(arguments.structuredData.gallery or '')
+				end
+				fileEntries[#fileEntries + 1] = { fileName = fileName, caption = captionForGallery, gallery = ownGallery }
 			end
 			LrFileUtils.delete(pathOrMessage)
 		else
@@ -870,11 +878,26 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 	end
 
 	-- add gallery
-	if MediaWikiUtils.isStringFilled(exportSettings.gallery) and fileEntries and #fileEntries > 0 then
-		local galleryArguments = {}
-		galleryArguments = MediaWikiUtils.currentDate(galleryArguments)
-		local substitutedGallery = MediaWikiUtils.substitutePlaceholders(exportSettings.gallery, galleryArguments)
-		MediaWikiInterface.addToGallery(fileEntries, substitutedGallery)
+	-- Files are grouped by target page: the gallery= line of each photo, else
+	-- the gallery field of the export dialog. Order of first appearance.
+	if fileEntries and #fileEntries > 0 then
+		local galleryArguments = MediaWikiUtils.currentDate({})
+		local order, groups = {}, {}
+		for _, entry in ipairs(fileEntries) do
+			local target = entry.gallery
+			if not MediaWikiUtils.isStringFilled(target) then target = exportSettings.gallery end
+			if MediaWikiUtils.isStringFilled(target) then
+				local substituted = MediaWikiUtils.substitutePlaceholders(target, galleryArguments)
+				if not groups[substituted] then
+					groups[substituted] = {}
+					order[#order + 1] = substituted
+				end
+				groups[substituted][#groups[substituted] + 1] = entry
+			end
+		end
+		for _, name in ipairs(order) do
+			MediaWikiInterface.addToGallery(groups[name], name)
+		end
 	end
 end
 
