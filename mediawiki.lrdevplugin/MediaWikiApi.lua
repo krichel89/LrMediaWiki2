@@ -134,7 +134,11 @@ function MediaWikiApi.parseXmlDom(xmlDomInstance)
 		for i = 1, xmlDomInstance:childCount() do
 			local child = xmlDomInstance:childAtIndex(i)
 			local childName = child:name()
-			if childName then
+			-- A text node may report no name or an EMPTY name (not verified
+			-- which one Lightroom/Windows does); only a real name is an
+			-- element. Otherwise the text was filed under the key '' and the
+			-- page text read back as empty.
+			if childName and childName ~= '' then
 				value[childName] = MediaWikiApi.parseXmlDom(child)
 			elseif child:type() == 'text' then
 				-- Accumulate text nodes into a special key
@@ -463,16 +467,67 @@ end
 -- fail with HTTP 400 - which the caller then read as "some error", so an
 -- existing gallery was never updated and a missing one never created.
 --
--- Returns: content, kind, detail
+-- Returns: content, kind, detail, revid
+--   revid     id of the revision that was read (only with kind 'ok'); callers
+--             pass it as baserevid so that a later write cannot silently
+--             overwrite an edit made in between.
 --   'ok'      content holds the wikitext (may be an empty string)
 --   'missing' the page does not exist yet - the caller may create it
 --   'invalid' MediaWiki rejects the title; detail carries the reason
 --   'error'   anything else; detail carries a short description
-function MediaWikiApi.getPageContent(page)
+-- JSON reader (formatversion=2). The XML reader below depends on how the
+-- Lightroom XML parser hands out text nodes; a page that read back EMPTY
+-- (and was then overwritten by the new gallery entries alone) was reported
+-- from the field, so JSON is tried first. Same return values as the XML
+-- reader; any unexpected shape returns 'error' (the caller then falls back
+-- to the XML reader and, failing that, does not write).
+function MediaWikiApi.getPageContentJson(page)
+	local requestHeaders = {
+		{ field = 'User-Agent', value = MediaWikiApi.userAgent },
+		{ field = 'Content-Type', value = 'application/x-www-form-urlencoded' },
+	}
+	MediaWikiApi.addAuthHeader(requestHeaders)
+	local body = MediaWikiApi.performHttpRequest(MediaWikiApi.apiPath, {
+		action = 'query',
+		prop = 'revisions',
+		rvprop = 'content|ids',
+		rvslots = 'main',
+		titles = page,
+		format = 'json',
+		formatversion = '2',
+	}, requestHeaders, true)
+	local okDecode, data = pcall(function() return JSON:decode(body) end)
+	if not okDecode or type(data) ~= 'table' then
+		return nil, 'error', 'JSON not readable'
+	end
+	if type(data.error) == 'table' then
+		return nil, 'error', tostring(data.error.code or 'api error')
+	end
+	local pages = data.query and data.query.pages
+	local pageNode = type(pages) == 'table' and pages[1]
+	if type(pageNode) ~= 'table' then
+		return nil, 'error', 'unexpected JSON response'
+	end
+	if pageNode.invalid then
+		return nil, 'invalid', pageNode.invalidreason or ''
+	end
+	if pageNode.missing then
+		return nil, 'missing'
+	end
+	local rev = type(pageNode.revisions) == 'table' and pageNode.revisions[1]
+	local slot = type(rev) == 'table' and type(rev.slots) == 'table' and rev.slots.main
+	local text = type(slot) == 'table' and slot.content
+	if type(text) ~= 'string' or rev.revid == nil then
+		return nil, 'error', 'no content in JSON response'
+	end
+	return text, 'ok', nil, rev.revid
+end
+
+function MediaWikiApi.getPageContentXml(page)
 	local xml = MediaWikiApi.performRequest {
 		action = 'query',
 		prop = 'revisions',
-		rvprop = 'content',
+		rvprop = 'content|ids',
 		rvslots = 'main',
 		titles = page,
 		format = 'xml',
@@ -498,22 +553,32 @@ function MediaWikiApi.getPageContent(page)
 		if rev ~= nil then
 			-- The page exists but is empty: the XML reader only stores text
 			-- when there IS text, so an empty page arrives without the key.
-			return '', 'ok'
+			return '', 'ok', nil, rev.revid
 		end
 		return nil, 'error', 'no content in response'
 	end
-	return text, 'ok'
+	return text, 'ok', nil, rev and rev.revid
+end
+
+-- JSON first, XML as fallback; see getPageContentJson.
+function MediaWikiApi.getPageContent(page)
+	local content, kind, detail, revid = MediaWikiApi.getPageContentJson(page)
+	if kind ~= 'error' then
+		return content, kind, detail, revid
+	end
+	MediaWikiUtils.trace('JSON page read failed (' .. tostring(detail) .. '), trying XML')
+	return MediaWikiApi.getPageContentXml(page)
 end
 
 -- Same, for callers that must not abort on a network error. LrTasks.pcall,
 -- never plain pcall: the request pauses, and a pause cannot cross a C call.
 function MediaWikiApi.getPageContentSafe(page)
-	local ok, content, kind, detail = LrTasks.pcall(
+	local ok, content, kind, detail, revid = LrTasks.pcall(
 		MediaWikiApi.getPageContent, page)
 	if not ok then
 		return nil, 'error', tostring(content)
 	end
-	return content, kind, detail
+	return content, kind, detail, revid
 end
 
 function MediaWikiApi.appendToPage(page, section, text, comment)
@@ -529,7 +594,13 @@ function MediaWikiApi.appendToPage(page, section, text, comment)
 	MediaWikiApi.performRequest(arguments)
 end
 
-function MediaWikiApi.setPageContent(page, text, comment)
+-- options (all optional), the guards against overwriting a page by accident:
+--   createonly = true   fail if the page already exists
+--   nocreate   = true   fail if the page does not exist
+--   baserevid  = id     revision the new text is based on; an edit made in
+--                       between is merged by MediaWiki or reported as a
+--                       conflict, never silently overwritten
+function MediaWikiApi.setPageContent(page, text, comment, options)
 	local arguments = {
 		action = 'edit',
 		title = page,
@@ -537,6 +608,11 @@ function MediaWikiApi.setPageContent(page, text, comment)
 		summary = comment,
 		token = MediaWikiApi.getEditToken(),
 	}
+	if type(options) == 'table' then
+		if options.createonly then arguments.createonly = '1' end
+		if options.nocreate then arguments.nocreate = '1' end
+		if options.baserevid then arguments.baserevid = tostring(options.baserevid) end
+	end
 	MediaWikiApi.performRequest(arguments)
 end
 

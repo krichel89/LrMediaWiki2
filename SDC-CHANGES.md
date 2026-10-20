@@ -1,5 +1,51 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.18
+
+- **Gallery page overwritten (reported, Windows, 2.1.14): probable cause.**
+  Old page ~200 lines ending in `</gallery>`, new revision = only the new
+  entries plus `</gallery>`, no opening tag. That is exactly what the code
+  writes when the page is read back EMPTY. The XML reader took a text node
+  with an empty name for an element and filed the page text under the key
+  `''`; the text then was missing and the page counted as empty. (Whether the
+  Windows XML parser really reports an empty name is not verified; the
+  symptom fits.) Fixed in the XML parser; pages are additionally read as JSON
+  first (2.1.16) and an empty read is never written (2.1.15).
+
+## Version 2.1.17
+
+- The edit summary of a gallery edit now says "Added to the gallery with
+  LrMediaWiki2 …" instead of "Uploaded with …" (files are added to the page,
+  not uploaded to it). The summary of real file uploads is unchanged.
+
+## Version 2.1.16
+
+- **Gallery page: more robust reading.** Reported with 2.1.14 (Windows): the
+  new revision of an existing gallery page contained only the new entry and
+  the closing tag. The exact cause is NOT proven; an empty read of the page
+  matches the symptom. Pages are now read as JSON (`formatversion=2`, no dependence on how the
+  Lightroom XML parser hands out text nodes); the XML reader remains as a
+  fallback only when the JSON answer is unusable. Together with the guards
+  of 2.1.15 (empty read is never written) a failed read can no longer cost a
+  page. NOT verified against the live Commons API from here (no network);
+  verified with the answer shapes as documented by MediaWiki.
+
+## Version 2.1.15
+
+- **Gallery page can no longer be overwritten as a whole.** Reported: an
+  upload replaced the entire gallery page. The cause could not be reproduced
+  from the code, so the write path is now guarded on every side:
+  - an existing page that reads back EMPTY is not written at all (reported
+    instead);
+  - editing an existing page uses `nocreate` and `baserevid` (an edit made
+    in between is merged or reported as conflict, never silently replaced);
+  - creating a page uses `createonly` (a wrong "missing" cannot replace a
+    page);
+  - the new text must not be shorter than the old one;
+  - a failed write is reported with a message instead of aborting the export.
+- Fix: a page that has text but no `<gallery>` tag got only entries and a
+  closing tag appended; now a complete `<gallery>` block is appended.
+
 ## Version 2.1.14
 
 - **Event sets: loading a set now REPLACES the categories** (2.1.13 added

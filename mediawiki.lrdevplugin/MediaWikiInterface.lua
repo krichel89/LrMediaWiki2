@@ -18,6 +18,7 @@ local LrDate = import 'LrDate'
 local LrDialogs = import 'LrDialogs'
 local LrErrors = import 'LrErrors'
 local LrFunctionContext = import 'LrFunctionContext'
+local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
 
 local MediaWikiApi = require 'MediaWikiApi'
@@ -162,7 +163,8 @@ end
 
 MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 	-- fileEntries is a list of {fileName, caption} tables
-	local comment = 'Uploaded with LrMediaWiki2 ' .. MediaWikiUtils.getVersionString()
+	-- Edit summary of the gallery page: files are ADDED to it, not uploaded.
+	local comment = 'Added to the gallery with LrMediaWiki2 ' .. MediaWikiUtils.getVersionString()
 	local galleryOpen = '<gallery mode="packed-hover" heights="240">'
 	local galleryClose = '</gallery>'
 
@@ -192,7 +194,27 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 
 	-- Read the existing page. Which of the three cases we are in comes from
 	-- the API answer itself, no longer from an HTTP status code.
-	local existingContent, kind, detail = MediaWikiApi.getPageContentSafe(galleryName)
+	local existingContent, kind, detail, revid = MediaWikiApi.getPageContentSafe(galleryName)
+
+	-- Every write goes through here. The edit itself pauses (HTTP), so it
+	-- must run under LrTasks.pcall, never plain pcall. A failure is reported
+	-- instead of aborting the rest of the export.
+	local function writeGallery(text, options)
+		local ok, err = LrTasks.pcall(MediaWikiApi.setPageContent, galleryName, text, comment, options)
+		if not ok then
+			local msg = LOC("$$$/LrMediaWiki/Interface/GalleryWriteFailed=The gallery page \"^1\" could not be saved (^2). Gallery not updated.",
+				tostring(galleryName), tostring(err))
+			MediaWikiUtils.trace(msg)
+			LrDialogs.showBezel(msg, 5)
+		end
+	end
+
+	-- A page that exists but reads back EMPTY is not trusted: writing now
+	-- would replace the whole page by the new entries alone.
+	if kind == 'ok' and existingContent == '' and revid ~= nil then
+		kind = 'emptyexisting'
+	end
+
 	if kind == 'ok' and type(existingContent) == 'string' then
 		local newContent
 		if existingContent:find(galleryClose, 1, true) then
@@ -201,14 +223,29 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 			local insertAt = #existingContent - pos - #galleryClose + 2
 			newContent = existingContent:sub(1, insertAt - 1) .. newEntries .. existingContent:sub(insertAt)
 		else
-			-- No </gallery> tag found: append entries and add closing tag
-			newContent = existingContent:gsub('%s*$', '') .. '\n' .. newEntries .. galleryClose
+			-- No </gallery> tag found: append a NEW gallery block (with its
+			-- opening tag; until 2.1.14 only the closing tag was added).
+			newContent = existingContent:gsub('%s*$', '') .. '\n\n' .. galleryOpen .. '\n' .. newEntries .. galleryClose
 		end
-		MediaWikiApi.setPageContent(galleryName, newContent, comment)
+		-- The page may only grow; anything else means something went wrong.
+		if #newContent < #existingContent then
+			local msg = LOC("$$$/LrMediaWiki/Interface/GalleryWriteFailed=The gallery page \"^1\" could not be saved (^2). Gallery not updated.",
+				tostring(galleryName), 'result shorter than the page')
+			MediaWikiUtils.trace(msg)
+			LrDialogs.showBezel(msg, 5)
+		else
+			writeGallery(newContent, { nocreate = true, baserevid = revid })
+		end
+	elseif kind == 'emptyexisting' then
+		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryReadFailed=Gallery page \"^1\" could not be read (^2). Gallery not updated to avoid overwriting it.",
+			tostring(galleryName), 'empty content')
+		MediaWikiUtils.trace(msg)
+		LrDialogs.showBezel(msg, 5)
 	elseif kind == 'missing' then
-		-- Page really does not exist: create fresh
+		-- Page really does not exist: create fresh. createonly makes the wiki
+		-- refuse if it exists after all (e.g. a wrong "missing").
 		local text = galleryOpen .. '\n' .. newEntries .. galleryClose
-		MediaWikiApi.setPageContent(galleryName, text, comment)
+		writeGallery(text, { createonly = true })
 	elseif kind == 'invalid' then
 		-- The title itself is the problem - name it, a number helps nobody.
 		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryBadTitle=The gallery page title \"^1\" is not accepted by the wiki (^2). Gallery not updated.",
