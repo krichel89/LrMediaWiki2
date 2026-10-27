@@ -276,6 +276,18 @@ local function pluginVersion()
 	return tostring(v.major) .. '.' .. tostring(v.minor) .. '.' .. tostring(v.revision)
 end
 
+-- Stores a list of sets from the page (sanitised, as ONE JSON text - LrPrefs
+-- does not carry nested tables reliably). Returns true if stored. Neither
+-- json nor LrPrefs pause, so plain pcall is fine.
+function MediaWikiSdcData.storeEventSets(list)
+	if type(list) ~= 'table' then return false end
+	local sets = sanitizeEventSets(list)
+	local ok, text = pcall(function() return json:encode(sets) end)
+	if not ok or type(text) ~= 'string' then return false end
+	local stored = pcall(function() MediaWikiSdcData.prefs().sdcEventSets = text end)
+	return stored
+end
+
 function MediaWikiSdcData.loadEventSets()
 	local text = MediaWikiSdcData.prefs().sdcEventSets
 	if type(text) ~= 'string' or text == '' then return {} end
@@ -644,11 +656,7 @@ function MediaWikiSdcData.applyResult(catalog, photos, result)
 	-- Veranstaltungs-Sets: die Seite schickt immer die GANZE Liste, auch die
 	-- leere (Loeschen des letzten Sets). Fehlt das Feld, bleibt alles wie es ist.
 	if type(result.eventSets) == 'table' then
-		local sets = sanitizeEventSets(result.eventSets)
-		local ok, text = pcall(function() return json:encode(sets) end)
-		if ok and type(text) == 'string' then
-			pcall(function() MediaWikiSdcData.prefs().sdcEventSets = text end)
-		end
+		MediaWikiSdcData.storeEventSets(result.eventSets)
 	end
 
 	-- Ein einzelnes Foto wie eine Liste mit einem Eintrag behandeln.

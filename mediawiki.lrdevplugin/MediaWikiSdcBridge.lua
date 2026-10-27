@@ -432,6 +432,17 @@ end
 local function applyIncoming(catalog, result, currentPhoto, currentKey)
 	if type(result) ~= 'table' then return end
 
+	-- Only the event sets changed (saved or deleted in the page): store them
+	-- and touch no photo - so no photo-key or selection check is needed.
+	if result.setsOnly == true then
+		local LrDialogs = import 'LrDialogs'
+		if MediaWikiSdcData.storeEventSets(result.eventSets) then
+			MediaWikiUtils.trace('SDC bridge: event sets stored')
+			LrDialogs.showBezel('Veranstaltungs-Sets gespeichert', 1.5)
+		end
+		return
+	end
+
 	local key = MediaWikiSdcData.trim(result.photoKey or '')
 	if key ~= '' and currentKey ~= '' and key ~= currentKey then
 		MediaWikiUtils.trace('SDC bridge: result for ' .. key

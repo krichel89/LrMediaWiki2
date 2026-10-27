@@ -1,5 +1,22 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.20
+
+- **Fix: event sets were lost on reopening the editor (reported).** In bridge
+  mode the page starts with the built-in SAMPLE payload, which has no sets;
+  since 2.1.13 the sets were taken only from that FIRST load, so the real
+  sets from Lightroom (arriving with the first state) were never shown - and
+  the next save wrote the empty list back over the stored sets. Now the sets
+  are taken from every state Lightroom sends, as long as nothing was changed
+  in this tab.
+- **Sets are stored at once.** "Save as set" and "Delete set" hand the sets to
+  Lightroom immediately (a result with `setsOnly`, no photo is written); before
+  they were stored only with the next photo save. The bridge holds one waiting
+  result, so such a hand-over waits 3 s after a photo save instead of
+  replacing it. Without the bridge (file route) sets still travel with "Save".
+- A tab in which no set was changed no longer sends the sets with a photo
+  save, so an old tab can no longer overwrite newer sets.
+
 ## Version 2.1.19
 
 Editor

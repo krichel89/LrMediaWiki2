@@ -513,14 +513,17 @@ var STRINGS = {
     tplHint: "Commons-Vorlage der Veranstaltung, z. B. {{WikiPortraits Venice Film Festival 2026}}. Sie steht auf der Dateiseite hinter der Infobox, nicht in der Beschreibung.",
     tplPh: "{{WikiPortraits …}}",
     setTitle: "Veranstaltungs-Set",
-    setHint: "Veranstaltung (Q-Nummer), Vorlage, Galerie und Kategorien gemeinsam wählen. Ein Set wird erst mit „Speichern“ in Lightroom dauerhaft abgelegt.",
+    setHint: "Veranstaltung (Q-Nummer), Vorlage, Galerie und Kategorien gemeinsam wählen. Sets werden sofort in Lightroom abgelegt.",
     setNone: "– Set wählen –",
     setNamePh: "Name für ein neues Set",
     setSave: "Als Set speichern",
     setDelete: "Set löschen",
     setApplied: "Set „{0}“ übernommen ({1} Set-Kategorien eingesetzt, die anderer Sets entfernt).",
-    setSaved: "Set „{0}“ gespeichert (Kategorien: {1}) – dauerhaft, sobald du in Lightroom speicherst.",
-    setDeleted: "Set „{0}“ gelöscht – dauerhaft, sobald du in Lightroom speicherst.",
+    setSaved: "Set „{0}“ gespeichert (Kategorien: {1}).",
+    setDeleted: "Set „{0}“ gelöscht.",
+    setsStored: "Sets in Lightroom abgelegt.",
+    setsNotStored: "Sets konnten nicht an Lightroom übergeben werden – sie reisen beim nächsten Speichern mit.",
+    setsNeedSave: "Ohne Brücke werden Sets erst mit „Speichern“ in Lightroom abgelegt.",
     setNeedName: "Bitte erst einen Namen für das Set eingeben.",
     setFull: "Es gibt schon 30 Sets – bitte erst eines löschen.",
     appVersionPrefix: "Version",
@@ -646,14 +649,17 @@ var STRINGS = {
     tplHint: "Commons template for the event, e.g. {{WikiPortraits Venice Film Festival 2026}}. It appears on the file page after the infobox, not inside the description.",
     tplPh: "{{WikiPortraits …}}",
     setTitle: "Event set",
-    setHint: "Pick event (item number), template, gallery and categories together. A set is stored permanently only when you save in Lightroom.",
+    setHint: "Pick event (item number), template, gallery and categories together. Sets are stored in Lightroom right away.",
     setNone: "– choose a set –",
     setNamePh: "Name for a new set",
     setSave: "Save as set",
     setDelete: "Delete set",
     setApplied: "Set \"{0}\" applied ({1} set categories in, those of other sets removed).",
-    setSaved: "Set \"{0}\" saved (categories: {1}) – permanent once you save in Lightroom.",
-    setDeleted: "Set \"{0}\" deleted – permanent once you save in Lightroom.",
+    setSaved: "Set \"{0}\" saved (categories: {1}).",
+    setDeleted: "Set \"{0}\" deleted.",
+    setsStored: "Sets stored in Lightroom.",
+    setsNotStored: "Sets could not be handed to Lightroom – they travel with the next save.",
+    setsNeedSave: "Without the bridge, sets are stored only with \"Save\".",
     setNeedName: "Please enter a name for the set first.",
     setFull: "There are already 30 sets – please delete one first.",
     appVersionPrefix: "Version",
@@ -834,6 +840,41 @@ function parseToken(tok){
 function tokenText(e){ return e.label ? e.id + " # " + e.label : e.id; }
 
 var SETS = null;
+/* In diesem Tab an den Sets etwas geaendert? Dann ist DIESER Tab massgeblich:
+   keine Uebernahme aus Lightroom mehr, und die Sets reisen beim Speichern
+   mit. Ein Tab ohne Aenderung schreibt die Sets nie zurueck. */
+var setsChanged = false;
+var setsTimer = null;
+var lastResultPost = 0;
+/* Die Bruecke haelt genau EIN wartendes Ergebnis; Lightroom holt es etwa
+   jede Sekunde ab. Ein Sets-Ergebnis direkt nach einem Foto-Ergebnis wuerde
+   dieses ueberschreiben - deshalb so lange warten. */
+var RESULT_GAP_MS = 3000;
+
+/* Sets SOFORT an Lightroom geben (nur im Brueckenbetrieb), ohne ein Foto zu
+   schreiben. */
+function persistSets(){
+  setsChanged = true;
+  if (!BRIDGE) { setStatus(t("setsNeedSave"), "dirty"); return; }
+  if (setsTimer) clearTimeout(setsTimer);
+  var warten = Math.max(0, lastResultPost + RESULT_GAP_MS - Date.now());
+  setsTimer = setTimeout(function(){
+    setsTimer = null;
+    /* KEIN Zeitstempel hier: ein spaeteres Sets-Ergebnis darf ein frueheres
+       ruhig ersetzen (es traegt die ganze, neuere Liste). Gewartet wird nur
+       hinter einem FOTO-Ergebnis. */
+    fetch(bridgeUrl("/result"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: PAYLOAD.token || "", setsOnly: true, eventSets: SETS })
+    }).then(function(r){
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      setStatus(t("setsStored"), "done");
+    }).catch(function(){
+      setStatus(t("setsNotStored"), "dirty");
+    });
+  }, warten);
+}
 function cleanSets(x){
   return (Array.isArray(x) ? x : []).filter(function(s){
     return s && typeof s.name === "string" && s.name;
@@ -859,10 +900,13 @@ function load(){
     var ver = String(PAYLOAD.pluginVersion || "");
     verEl.textContent = /^[0-9.]+$/.test(ver) ? ver : "";
   }
-  /* Veranstaltungs-Sets nur beim ERSTEN Laden uebernehmen: bei einem
-     Fotowechsel stuende sonst der Stand aus den Voreinstellungen wieder da
-     und verwuerfe, was im Tab noch nicht gespeichert ist. */
-  if (SETS === null) SETS = cleanSets(PAYLOAD.eventSets);
+  /* Veranstaltungs-Sets: aus JEDEM Zustand von Lightroom uebernehmen, solange
+     in diesem Tab nichts an den Sets geaendert wurde. Bis 2.1.19 galt nur das
+     ERSTE Laden - im Brueckenbetrieb ist das aber die eingebaute Beispiel-
+     Nutzlast OHNE Sets; die echten Sets aus Lightroom wurden danach nie
+     angenommen, und das naechste Speichern schrieb die leere Liste zurueck. */
+  if (Array.isArray(PAYLOAD.eventSets) && !setsChanged) SETS = cleanSets(PAYLOAD.eventSets);
+  else if (SETS === null) SETS = [];
   /* Gelernte Fuegungen kommen aus den Lightroom-Voreinstellungen mit. NICHT
      im localStorage halten: die Seite laeuft unter einem neuen Port bei jedem
      Start der Bruecke, und der Port gehoert zur Herkunft - der Speicher waere
@@ -1620,15 +1664,16 @@ function wireSets(){
     nameBox.value = "";
     renderSets();
     if (idx >= 0) sel.value = String(idx);
-    touch();
-    setStatus(t("setSaved", neu.name, neu.categories.length), "dirty");
+    setStatus(t("setSaved", neu.name, neu.categories.length));
+    persistSets();
   });
   document.getElementById("setDel").addEventListener("click", function(){
     var i = parseInt(sel.value, 10);
     if (isNaN(i) || !SETS[i]) return;
     var weg = SETS.splice(i, 1)[0];
-    renderSets(); touch();
-    setStatus(t("setDeleted", weg.name), "dirty");
+    renderSets();
+    setStatus(t("setDeleted", weg.name));
+    persistSets();
   });
   document.getElementById("galInput").addEventListener("input", function(){
     state.gallery = this.value.trim();
@@ -2925,7 +2970,9 @@ function payloadOut(){
     freetext: core.freetext,
     eventTemplate: core.eventTemplate,
     gallery: core.gallery,
-    eventSets: SETS || [],
+    /* nur, wenn in diesem Tab geaendert - sonst bleiben die Sets in
+       Lightroom unangetastet (ein alter Tab ueberschreibt nichts) */
+    eventSets: setsChanged ? (SETS || []) : undefined,
     wikitext: buildWikitext(),
     /* Welche Felder der Nutzer seit dem Öffnen angefasst hat. Das aktive
        Foto bekommt immer alles; die übrigen markierten nur diese hier. */
@@ -3166,6 +3213,9 @@ function connectBridge(){
 }
 
 function saveViaBridge(){
+  /* Ein noch wartendes Sets-Ergebnis faellt weg: die Sets reisen hier mit. */
+  if (setsTimer) { clearTimeout(setsTimer); setsTimer = null; }
+  lastResultPost = Date.now();
   var out = JSON.stringify(payloadOut());
   return fetch(bridgeUrl("/result"), {
     method: "POST",
