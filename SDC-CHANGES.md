@@ -1,5 +1,19 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.21
+
+- **Person categories stay out of event sets.** "Save as set" leaves out the
+  categories of the depicted items (person, film …): recognised by the chip
+  label, by P373 and by the item's Commons link to a category (looked up on
+  Wikidata; without an answer within 4 s the labels alone decide). The status
+  line says how many were left out.
+- Loading a set never removes a category of a depicted item, even if an older
+  set still contains it.
+- "Person tauschen" keeps swapping the person category (list and "Weiterer
+  Text"), unchanged since 2.1.8; now covered by a test together with sets.
+- The status after saving/deleting a set keeps its first part ("… saved, N
+  left out") when the hand-over to Lightroom is confirmed.
+
 ## Version 2.1.20
 
 - **Fix: event sets were lost on reopening the editor (reported).** In bridge

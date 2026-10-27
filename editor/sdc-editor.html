@@ -526,6 +526,7 @@ var STRINGS = {
     setsNeedSave: "Ohne Brücke werden Sets erst mit „Speichern“ in Lightroom abgelegt.",
     setNeedName: "Bitte erst einen Namen für das Set eingeben.",
     setFull: "Es gibt schon 30 Sets – bitte erst eines löschen.",
+    setSkippedPerson: "{0} Kategorie(n) von Zeigt-Einträgen (Person …) nicht ins Set übernommen.",
     appVersionPrefix: "Version",
     galTitle: "Galerie (optional)",
     galHint: "Commons-Seite, auf der die hochgeladenen Dateien als Galerie ergänzt werden, z. B. Commons:Frankfurter Buchmesse 2026/Porträts. Gilt für dieses Foto und ersetzt die Galerie aus dem Export-Dialog.",
@@ -662,6 +663,7 @@ var STRINGS = {
     setsNeedSave: "Without the bridge, sets are stored only with \"Save\".",
     setNeedName: "Please enter a name for the set first.",
     setFull: "There are already 30 sets – please delete one first.",
+    setSkippedPerson: "{0} category/categories of depicted items (person …) left out of the set.",
     appVersionPrefix: "Version",
     galTitle: "Gallery (optional)",
     galHint: "Commons page to which the uploaded files are added as a gallery, e.g. Commons:Frankfurt Book Fair 2026/Portraits. Applies to this photo and replaces the gallery of the export dialog.",
@@ -853,7 +855,7 @@ var RESULT_GAP_MS = 3000;
 
 /* Sets SOFORT an Lightroom geben (nur im Brueckenbetrieb), ohne ein Foto zu
    schreiben. */
-function persistSets(){
+function persistSets(meldung){
   setsChanged = true;
   if (!BRIDGE) { setStatus(t("setsNeedSave"), "dirty"); return; }
   if (setsTimer) clearTimeout(setsTimer);
@@ -869,7 +871,7 @@ function persistSets(){
       body: JSON.stringify({ token: PAYLOAD.token || "", setsOnly: true, eventSets: SETS })
     }).then(function(r){
       if (!r.ok) throw new Error("HTTP " + r.status);
-      setStatus(t("setsStored"), "done");
+      setStatus((meldung ? meldung + " " : "") + t("setsStored"), "done");
     }).catch(function(){
       setStatus(t("setsNotStored"), "dirty");
     });
@@ -1584,11 +1586,14 @@ var SETCATS = (function(){
     while ((m = LINK.exec(String(text || "")))) out.push(m[1]);
     return out;
   }
-  function tausche(cats, freetext, sets, neu){
+  /* schutz: Namen, die NIE entfernt werden (Kategorien der Zeigt-Eintraege -
+     falls ein aelteres Set eine Personenkategorie enthaelt, bleibt sie). */
+  function tausche(cats, freetext, sets, neu, schutz){
     var weg = {};
     (sets || []).forEach(function(st){
       (st.categories || []).forEach(function(c){ weg[norm(c)] = true; });
     });
+    (schutz || []).forEach(function(c){ delete weg[norm(c)]; });
     var removed = 0;
     var bleibt = (cats || []).filter(function(c){
       if (weg[norm(c)]) { removed++; return false; }
@@ -1619,7 +1624,8 @@ function applySet(s){
   state.createdDuring = parseToken(s.createdDuring) || null;
   state.eventTemplate = s.eventTemplate || "";
   state.gallery = s.gallery || "";
-  var r = SETCATS.tausche(state.categories, state.freetext, SETS, s);
+  var r = SETCATS.tausche(state.categories, state.freetext, SETS, s,
+    state.depicts.map(function(e){ return e.label; }));
   state.categories = r.categories;
   state.freetext = r.freetext;
   document.getElementById("freetext").value = state.freetext;
@@ -1643,6 +1649,54 @@ function wireSets(){
       if (!isNaN(cur) && SETS[cur]) name = SETS[cur].name;
     }
     if (!name) { setStatus(t("setNeedName")); return; }
+    var btn = this;
+    btn.disabled = true;
+    zeigtKategorien(function(ausser){
+      btn.disabled = false;
+      speichereSet(name, ausser);
+    });
+  });
+
+  /* Kategorien der Zeigt-Eintraege (Personen, Filme …) gehoeren zum FOTO,
+     nicht zur Veranstaltung - sie kommen nicht ins Set. Erkannt an der
+     Beschriftung des Chips, an P373 und am Commons-Link auf eine Kategorie.
+     Ohne Netz bleibt es bei den Beschriftungen. */
+  function zeigtKategorien(fertig){
+    var namen = state.depicts.map(function(e){ return e.label; })
+                  .filter(function(x){ return x; });
+    var ids = state.depicts.map(function(e){ return e.id; });
+    if (!ids.length) { fertig(namen); return; }
+    /* Antwortet Wikidata nicht, wird nach 4 s mit den Beschriftungen
+       gespeichert - der Knopf darf nicht haengen bleiben. */
+    var erledigt = false;
+    function einmal(){ if (!erledigt) { erledigt = true; fertig(namen); } }
+    setTimeout(einmal, 4000);
+    api({ action: "wbgetentities", ids: ids.slice(0, 50).join("|"),
+          props: "claims|sitelinks|labels", sitefilter: "commonswiki",
+          languages: "en|de|" + UI })
+    .then(function(d){
+      var ents = (d && d.entities) || {};
+      ids.forEach(function(id){
+        var e = ents[id];
+        if (!e) return;
+        var k = p373Oder(e);
+        if (k) namen.push(k);
+        var sl = e.sitelinks && e.sitelinks.commonswiki;
+        var tt = (sl && sl.title) || "";
+        if (/^Category:/i.test(tt)) namen.push(tt.replace(/^Category:/i, "").trim());
+        ["en", "de", UI].forEach(function(l){
+          if (e.labels && e.labels[l]) namen.push(e.labels[l].value);
+        });
+      });
+    })
+    .catch(function(){})
+    .then(einmal);
+  }
+
+  function speichereSet(name, ausser){
+    var nicht = {};
+    (ausser || []).forEach(function(c){ nicht[SETCATS.norm(c)] = true; });
+    var ausgelassen = 0;
     var neu = { name: name.slice(0, 60),
                 createdDuring: state.createdDuring ? tokenText(state.createdDuring) : "",
                 eventTemplate: state.eventTemplate || "",
@@ -1653,7 +1707,10 @@ function wireSets(){
                   var seen = {}, out = [];
                   state.categories.concat(SETCATS.ausText(state.freetext)).forEach(function(c){
                     var k = SETCATS.norm(c);
-                    if (k && !seen[k]) { seen[k] = true; out.push(c.trim()); }
+                    if (!k || seen[k]) return;
+                    seen[k] = true;
+                    if (nicht[k]) { ausgelassen++; return; }
+                    out.push(c.trim());
                   });
                   return out;
                 })() };
@@ -1661,19 +1718,21 @@ function wireSets(){
     SETS.forEach(function(s, i){ if (s.name.toLowerCase() === neu.name.toLowerCase()) idx = i; });
     if (idx >= 0) SETS[idx] = neu; else if (SETS.length < 30) { SETS.push(neu); idx = SETS.length - 1; }
     else { setStatus(t("setFull")); return; }
-    nameBox.value = "";
+    document.getElementById("setName").value = "";
     renderSets();
     if (idx >= 0) sel.value = String(idx);
-    setStatus(t("setSaved", neu.name, neu.categories.length));
-    persistSets();
-  });
+    var meldung = t("setSaved", neu.name, neu.categories.length) +
+                  (ausgelassen ? " " + t("setSkippedPerson", ausgelassen) : "");
+    setStatus(meldung);
+    persistSets(meldung);
+  }
   document.getElementById("setDel").addEventListener("click", function(){
     var i = parseInt(sel.value, 10);
     if (isNaN(i) || !SETS[i]) return;
     var weg = SETS.splice(i, 1)[0];
     renderSets();
     setStatus(t("setDeleted", weg.name));
-    persistSets();
+    persistSets(t("setDeleted", weg.name));
   });
   document.getElementById("galInput").addEventListener("input", function(){
     state.gallery = this.value.trim();
