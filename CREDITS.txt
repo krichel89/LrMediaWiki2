@@ -1,3 +1,10 @@
 Robin Krahl <robin.krahl@wikipedia.de>
 Eckhard Henkel <eckhard.henkel@wikipedia.de>
 Harald Krichel <https://github.com/krichel89> (LrMediaWiki2 fork)
+
+Third-party artwork
+-------------------
+WikiPortraits logo (small icon in the SDC editor heading): supplied by
+Harald Krichel for this project. Its licence/trademark terms must be taken
+from the logo's file page on Wikimedia Commons - NOT verified when it was
+added (2.1.19).

@@ -62,12 +62,20 @@ end
 -- Lightroom. Takes the leaf name (with or without extension) and returns nil
 -- if the name is acceptable, otherwise a reason code:
 --   'leadingUnderscore'  starts with "_"  (e.g. _DSC1234, _MG_5678)
---   'cameraName'         a camera prefix followed by a number (IMG_1234,
---                        DSC01234, DSCF0042 ...)
---   'noMeaning'          fewer than two words of two or more letters, or no
---                        word of three or more letters (KRI_2026_1834,
---                        A7R04312, 20260101 ...): a random camera counter
--- Letters include bytes >= 128 so that umlauts and other UTF-8 letters count.
+--   'cameraName'         a camera prefix followed by a number of at least
+--                        three digits (IMG_1234, DSC01234, DSCF0042 ...);
+--                        "Sam_2" is not a camera name
+--   'noMeaning'          none of the following holds (KRI_2026_1834,
+--                        A7R04312, 20260101 ...: a random camera counter):
+--                          * two words of two or more letters, one of them
+--                            with three or more,
+--                          * one word of four or more letters (Madonna-1234,
+--                            Cher-0042: single-name people),
+--                          * one word of two or more NON-LATIN characters
+--                            (北京-1: one character carries a whole syllable)
+-- Letters include bytes >= 128 so that umlauts and other UTF-8 letters count;
+-- the length of a word is counted in CHARACTERS (UTF-8 continuation bytes
+-- 0x80-0xBF do not count), so "Çatak" has five, not six.
 local CAMERA_PREFIXES = {
 	'IMGP', 'IMG', 'DSCF', 'DSCN', 'DSC', 'DSF', 'MVI', 'GOPR', 'DJI', 'PXL',
 	'PICT', 'SAM', 'SDC', 'CIMG', 'DCP', 'IMAG',
@@ -82,18 +90,80 @@ MediaWikiUtils.fileNameProblem = function(leafName)
 	for _, prefix in ipairs(CAMERA_PREFIXES) do
 		if upper:sub(1, #prefix) == prefix then
 			local rest = upper:sub(#prefix + 1)
-			if rest:match('^[_%-%s]*%d') then
+			if rest:match('^[_%-%s]*%d%d%d') then
 				return 'cameraName'
 			end
 		end
 	end
-	local words, long = 0, 0
+	local words, long, single = 0, 0, false
 	for word in stem:gmatch('[%a\128-\255]+') do
-		if #word >= 2 then words = words + 1 end
-		if #word >= 3 then long = long + 1 end
+		-- characters, not bytes: drop the UTF-8 continuation bytes
+		local chars = #(word:gsub('[\128-\191]', ''))
+		if chars >= 2 then words = words + 1 end
+		if chars >= 3 then long = long + 1 end
+		if chars >= 4 then single = true end
+		-- two or more characters outside ASCII that are not just accented
+		-- Latin letters: a lead byte >= 0xE0 starts a 3- or 4-byte sequence
+		-- (CJK, Thai, Indic ...), Latin accents are 2-byte sequences
+		if chars >= 2 and select(2, word:gsub('[\224-\247]', '')) >= 2 then
+			single = true
+		end
 	end
-	if words < 2 or long < 1 then
+	if not single and (words < 2 or long < 1) then
 		return 'noMeaning'
+	end
+	return nil
+end
+
+-- Category name as Commons compares it: underscores are spaces, runs of
+-- spaces are one, the first letter is case-insensitive. Pure.
+MediaWikiUtils.normCategory = function(name)
+	local n = tostring(name or ''):gsub('_', ' '):gsub('%s+', ' ')
+	n = n:match('^%s*(.-)%s*$')
+	return (n:gsub('^%l', string.upper))
+end
+
+-- Does a category from the export dialog belong to a DIFFERENT event set than
+-- the photo's own categories? Only categories that belong to exactly ONE set
+-- count; a category in several sets (e.g. a general WikiPortraits category)
+-- says nothing about which event the photo is from. Pure.
+--   dialogCats, photoCats  lists of category names
+--   sets                   list of {name=, categories={...}}
+-- Returns nil, or { category = <dialog category>, dialogSet = <set name>,
+-- photoSet = <set name> }.
+MediaWikiUtils.setCategoryConflict = function(dialogCats, photoCats, sets)
+	if type(sets) ~= 'table' or #sets == 0 then return nil end
+	local owners = {}
+	for _, set in ipairs(sets) do
+		local seen = {}
+		for _, c in ipairs(set.categories or {}) do
+			local k = MediaWikiUtils.normCategory(c)
+			if k ~= '' and not seen[k] then
+				seen[k] = true
+				owners[k] = owners[k] or {}
+				owners[k][#owners[k] + 1] = set.name
+			end
+		end
+	end
+	local function onlySet(c)
+		local o = owners[MediaWikiUtils.normCategory(c)]
+		if o and #o == 1 then return o[1] end
+		return nil
+	end
+	local photoSets, firstPhotoSet = {}, nil
+	for _, c in ipairs(photoCats or {}) do
+		local s = onlySet(c)
+		if s then
+			photoSets[s] = true
+			firstPhotoSet = firstPhotoSet or s
+		end
+	end
+	if not firstPhotoSet then return nil end
+	for _, c in ipairs(dialogCats or {}) do
+		local s = onlySet(c)
+		if s and not photoSets[s] then
+			return { category = MediaWikiUtils.trim(c), dialogSet = s, photoSet = firstPhotoSet }
+		end
 	end
 	return nil
 end

@@ -31,6 +31,7 @@ local MediaWikiApi = require 'MediaWikiApi'
 local MediaWikiInterface = require 'MediaWikiInterface'
 local MediaWikiOAuth = require 'MediaWikiOAuth'
 local MediaWikiUtils = require 'MediaWikiUtils'
+local MediaWikiSdcData = require 'MediaWikiSdcData'
 
 local MediaWikiExportServiceProvider = {}
 
@@ -53,6 +54,28 @@ local function normalizeSdcQid(value)
 		return qid
 	end
 	return ''
+end
+
+-- "A; B ;C" -> { 'A', 'B', 'C' }. Pure.
+local function splitCategories(text)
+	local out = {}
+	for c in tostring(text or ''):gmatch('[^;]+') do
+		c = MediaWikiUtils.trim(c)
+		if c ~= '' then out[#out + 1] = c end
+	end
+	return out
+end
+
+-- The photo's own categories: the categories field plus [[Category:...]]
+-- links in description_all ("Weiterer Text"), with or without sort key. Pure.
+local function photoCategories(fields)
+	local out = splitCategories(fields and fields.categories)
+	local text = tostring(fields and fields['description_all'] or '')
+	for c in text:gmatch('%[%[%s*[Cc]ategory%s*:%s*([^%]|]+)') do
+		c = MediaWikiUtils.trim(c)
+		if c ~= '' then out[#out + 1] = c end
+	end
+	return out
 end
 
 local fillFieldsByFile = function(propertyTable, photo, useLocationInfo)
@@ -331,9 +354,18 @@ local copyToClipboard = function(clipboardText, fileName)
 		-- Workaround: A temporary file is used to allow "clip < file".
 		LrTasks.startAsyncTask( function ()
 			local tmpFile = os.tmpname()
-			local fd = assert(io.open(tmpFile, "w+"))
+			-- No assert: a failed open used to end in Lightroom's "internal
+			-- error" dialog. Report it in plain words instead.
+			local fd = io.open(tmpFile, "w+")
+			if not fd then
+				LrDialogs.showBezel(LOC "$$$/LrMediaWiki/Preview/CopyFailed=Could not copy: no temporary file could be written.", 4)
+				return
+			end
 			fd:write(clipboardText)
-			copyCmd = "chcp 65001 & clip < " .. tmpFile -- chcp 65001 == change code page to UTF-8
+			-- chcp 65001 == change code page to UTF-8. The path is QUOTED: a
+			-- temp path in a profile folder with a space ("C:\Users\Anna Alt")
+			-- would otherwise split the command. Paths cannot contain '"'.
+			copyCmd = 'chcp 65001 & clip < "' .. tmpFile .. '"'
 			io.close(fd)
 			LrTasks.execute(copyCmd)
 			-- The file holds the full preview wikitext; do not leave it behind
@@ -350,7 +382,11 @@ local copyToClipboard = function(clipboardText, fileName)
 		-- nichts vom Inhalt landet mehr in der Kommandozeile.
 		LrTasks.startAsyncTask( function ()
 			local tmpFile = os.tmpname()
-			local fd = assert(io.open(tmpFile, "w+"))
+			local fd = io.open(tmpFile, "w+")
+			if not fd then
+				LrDialogs.showBezel(LOC "$$$/LrMediaWiki/Preview/CopyFailed=Could not copy: no temporary file could be written.", 4)
+				return
+			end
 			fd:write(clipboardText)
 			io.close(fd)
 			copyCmd = "export LANG=en_US.UTF-8; pbcopy < '" .. tmpFile .. "'"
@@ -699,6 +735,11 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 	-- file entries for gallery creation (fileName + caption)
 	local fileEntries = {}
 
+	-- Event sets (for the category check before each upload) and the answer
+	-- to that check, asked at most once per export.
+	local eventSets = MediaWikiSdcData.loadEventSets()
+	local setConflictAnswer = nil
+
 	local useLocationInfo = getUseLocationInfo(exportContext.propertyTable)
 
 	-- iterate over photos
@@ -766,7 +807,29 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 			-- error message)
 			local fileName = string.gsub(LrPathUtils.leafName(pathOrMessage), '[ _]+', '_')
 			local hasDescription = MediaWikiUtils.isStringFilled(filledExportFields['description_all'])
-			local message = MediaWikiInterface.uploadFile(pathOrMessage, fileDescription, hasDescription, fileName, exportSettings.info_mode, updateCommentForAll)
+			-- Event-set check: does a category of the export dialog belong to a
+			-- DIFFERENT set than the photo's own categories (e.g. "... at the
+			-- Cannes Film Festival 2026" in the dialog, Frankfurt Book Fair set
+			-- on the photo)? Asked once per export; "no" skips such photos.
+			local conflictMessage = nil
+			local conflict = MediaWikiUtils.setCategoryConflict(
+				splitCategories(exportSettings.info_categories),
+				photoCategories(filledExportFields), eventSets)
+			if conflict then
+				if setConflictAnswer == nil then
+					setConflictAnswer = LrDialogs.confirm(
+						LOC("$$$/LrMediaWiki/Export/SetConflictTitle=The export dialog has a category of another event set"),
+						LOC("$$$/LrMediaWiki/Export/SetConflictText=The category \"^1\" in the export dialog belongs to the set \"^2\", but the photo (^3) carries categories of the set \"^4\". Remove it from the export dialog and keep it in the set instead.",
+							conflict.category, conflict.dialogSet, fileName, conflict.photoSet),
+						LOC "$$$/LrMediaWiki/Export/SetConflictUpload=Upload anyway",
+						LOC "$$$/LrMediaWiki/Export/SetConflictSkip=Do not upload")
+				end
+				if setConflictAnswer ~= 'ok' then
+					conflictMessage = LOC("$$$/LrMediaWiki/Export/SetConflictSkipped=Not uploaded: the category \"^1\" of the export dialog belongs to the set \"^2\", the photo to the set \"^3\".",
+						conflict.category, conflict.dialogSet, conflict.photoSet)
+				end
+			end
+			local message = conflictMessage or MediaWikiInterface.uploadFile(pathOrMessage, fileDescription, hasDescription, fileName, exportSettings.info_mode, updateCommentForAll)
 			if message then
 				rendition:uploadFailed(message)
 			else
@@ -887,7 +950,10 @@ MediaWikiExportServiceProvider.processRenderedPhotos = function(functionContext,
 			local target = entry.gallery
 			if not MediaWikiUtils.isStringFilled(target) then target = exportSettings.gallery end
 			if MediaWikiUtils.isStringFilled(target) then
-				local substituted = MediaWikiUtils.substitutePlaceholders(target, galleryArguments)
+				-- Same page, same group: "Commons:A B" and "Commons:A_B" are
+				-- one page and must be ONE edit, not two in a row.
+				local substituted = MediaWikiUtils.normCategory(
+					MediaWikiUtils.substitutePlaceholders(target, galleryArguments))
 				if not groups[substituted] then
 					groups[substituted] = {}
 					order[#order + 1] = substituted

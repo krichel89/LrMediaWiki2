@@ -607,7 +607,14 @@ if command -v gh >/dev/null && [ -n "$GHREPO" ] && [ "$TAGDA" = 0 ] \
 	# Derselbe Tag-Push hat oben schon den Workflow gestartet, der ebenfalls
 	# ein Release anlegt. Wer zuerst fertig ist, ist Zufall - deshalb hier
 	# genauso anlegen ODER ergaenzen statt blind zu erzeugen.
-	if frage "Release jetzt anlegen?"; then
+	# Ohne Mac-Zertifikat sind die Pakete hier UNSIGNIERT. Wuerden sie
+	# angehaengt (--clobber), ersetzten sie die signierten Pakete des Laeufers,
+	# sobald der vor diesem Skript fertig ist. Deshalb dann gar nicht fragen.
+	if [ -z "${LRMW_MACOS_IDENTITY:-}" ]; then
+		info "Kein Mac-Zertifikat (LRMW_MACOS_IDENTITY): die Pakete hier sind unsigniert."
+		info "Das Release mit den SIGNIERTEN Paketen legt der Laeufer (release.yml) an."
+		gut "GitHub-Release hier bewusst uebersprungen"
+	elif frage "Release jetzt anlegen?"; then
 		if gh release view "$TAG" --repo "$GHREPO" >/dev/null 2>&1; then
 			info "Release $TAG gibt es schon (vermutlich vom Workflow)."
 			if frage "Die hier gebauten Pakete trotzdem anhaengen?"; then

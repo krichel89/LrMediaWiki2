@@ -267,6 +267,15 @@ local function sanitizeEventSets(t)
 	return out
 end
 
+-- "2.1.19" from Info.lua; empty if that cannot be read. require does not
+-- pause, so plain pcall is fine.
+local function pluginVersion()
+	local ok, info = pcall(function() return require 'Info' end)
+	local v = ok and type(info) == 'table' and info.VERSION
+	if type(v) ~= 'table' then return '' end
+	return tostring(v.major) .. '.' .. tostring(v.minor) .. '.' .. tostring(v.revision)
+end
+
 function MediaWikiSdcData.loadEventSets()
 	local text = MediaWikiSdcData.prefs().sdcEventSets
 	if type(text) ~= 'string' or text == '' then return {} end
@@ -516,6 +525,8 @@ function MediaWikiSdcData.collectPayload(photo, photoCount)
 		-- Als EIN JSON-Text in den Voreinstellungen, weil LrPrefs
 		-- verschachtelte Tabellen nicht zuverlaessig traegt.
 		eventSets = MediaWikiSdcData.loadEventSets(),
+		-- Shown small next to the editor's heading.
+		pluginVersion = pluginVersion(),
 		-- Gelernte Fuegungen fuer den Satzbau. Gehen mit und kommen mit dem
 		-- Ergebnis zurueck; die Seite darf sie nicht selbst dauerhaft halten,
 		-- weil ihre Herkunft bei jedem Start der Bruecke einen neuen Port

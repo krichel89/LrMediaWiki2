@@ -184,7 +184,15 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 	-- Build new entries string
 	local newEntries = ''
 	for _, entry in ipairs(fileEntries) do
+		-- The label comes from the caption, i.e. free text. In a <gallery>
+		-- line a "|" starts a new parameter and [[...]] is a live link (a
+		-- [[Category:...]] in it would categorise the GALLERY page), a line
+		-- break ends the entry. All of that is neutralised here.
 		local label = extractName(entry.caption)
+		if label then
+			label = label:gsub('[\r\n|]', ' '):gsub('%[%[', '('):gsub('%]%]', ')')
+			label = MediaWikiUtils.trim((label:gsub('%s+', ' ')))
+		end
 		if label and label ~= '' then
 			newEntries = newEntries .. 'File:' .. entry.fileName .. '|' .. label .. '\n'
 		else
@@ -237,8 +245,10 @@ MediaWikiInterface.addToGallery = function(fileEntries, galleryName)
 			writeGallery(newContent, { nocreate = true, baserevid = revid })
 		end
 	elseif kind == 'emptyexisting' then
-		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryReadFailed=Gallery page \"^1\" could not be read (^2). Gallery not updated to avoid overwriting it.",
-			tostring(galleryName), 'empty content')
+		-- Either the page really is empty or the read failed; both look the
+		-- same here, so the message names both instead of claiming a failure.
+		local msg = LOC("$$$/LrMediaWiki/Interface/GalleryEmpty=Gallery page \"^1\" exists but came back empty (empty page or failed read). Gallery not updated to avoid overwriting it - please add a <gallery></gallery> line to the page.",
+			tostring(galleryName))
 		MediaWikiUtils.trace(msg)
 		LrDialogs.showBezel(msg, 5)
 	elseif kind == 'missing' then
@@ -331,7 +341,7 @@ MediaWikiInterface.uploadFile = function(filePath, description, hasDescription, 
 			elseif problem == 'cameraName' then
 				return LOC("$$$/LrMediaWiki/Export/NameCamera=Not uploaded: the file name \"^1\" is a camera name (IMG, DSC ...). Please give the file a descriptive name.", targetFileName)
 			end
-			return LOC("$$$/LrMediaWiki/Export/NameNoMeaning=Not uploaded: the file name \"^1\" has no descriptive meaning (at least two words are needed, not a camera counter). Please give the file a descriptive name.", targetFileName)
+			return LOC("$$$/LrMediaWiki/Export/NameNoMeaning=Not uploaded: the file name \"^1\" has no descriptive meaning (two words, or one word of four or more letters, not a camera counter). Please give the file a descriptive name.", targetFileName)
 		end
 	end
 	local uploadResult = MediaWikiApi.upload(targetFileName, filePath, description, comment, ignorewarnings)

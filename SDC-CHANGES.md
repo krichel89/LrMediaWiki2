@@ -1,5 +1,48 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.19
+
+Editor
+- Heading "Der SDC-Editor von LrMediaWiki2" / "The SDC editor of LrMediaWiki2"
+  with the plug-in version in small type (from Info.lua, sent as
+  `pluginVersion`); small WikiPortraits logo at the top right (embedded as a
+  data URI, no request leaves the page).
+- **Event sets swap only set categories.** Loading a set removes every category
+  that belongs to ANY saved set - from the category list and as
+  `[[Category:…]]` from "Weiterer Text" (a line that held only such links goes
+  away) - and puts in those of the chosen set. Other categories (person, hand
+  entries) stay. This replaces 2.1.14 ("replace all categories"), which also
+  dropped the person category. Names compare like Commons: `_` = space, first
+  letter case-insensitive.
+- "Save as set" also takes the `[[Category:…]]` links of "Weiterer Text" (the
+  photographer category of an event often lives there).
+- With 30 sets, saving a new one now says so instead of claiming success.
+
+Upload
+- **Warning before upload:** if a category of the export dialog belongs to a
+  different event set than the photo's own categories (list or "Weiterer
+  Text"), Lightroom asks once per export: "Upload anyway" / "Do not upload";
+  skipped photos are listed at the end. Only categories that belong to exactly
+  one set count. Pure check `MediaWikiUtils.setCategoryConflict`.
+- File name check (2.1.10) no longer refuses single-name people: one word of
+  four or more letters (`Madonna-1234`, `Cher-0042`) or two or more non-Latin
+  characters (`北京-1`) is enough; a camera name now needs at least three
+  digits after the prefix (`Sam_2` is not one). Word length counts characters,
+  not bytes.
+- Gallery: the label taken from the caption is cleaned (`|`, `[[`, `]]`, line
+  breaks), so a caption can no longer add a category to the gallery page or
+  swallow the name; gallery titles that differ only by `_`/space or the first
+  letter are one page and one edit; a page that exists but reads empty now
+  says so (instead of "could not be read") and how to fix it.
+- Copy source (Windows): the temporary file path is quoted (a profile folder
+  with a space split the command), and a failed temp file gives a message
+  instead of Lightroom's "internal error". Same check on the Mac.
+
+Tooling (no effect on the plug-in)
+- `release.sh`: without `LRMW_MACOS_IDENTITY` the question "Release jetzt
+  anlegen?" is skipped - the local packages are unsigned and would replace the
+  runner's signed ones (`--clobber`).
+
 ## Version 2.1.18
 
 - **Gallery page overwritten (reported, Windows, 2.1.14): probable cause.**
@@ -57,6 +100,7 @@
   (P10408 item), event template, gallery page and categories are stored
   together under a name, loaded with one click, overwritten (same name) or
   deleted. Loading a set sets item, template and gallery and ADDS its
+  (superseded: 2.1.14 replaced the categories, 2.1.19 swaps only set categories)
   categories to the existing ones (never replaces). Sets live in the Lightroom
   preferences as one JSON text (`sdcEventSets`, max. 30 sets) and travel with
   the result, so they survive the new port of every bridge start. They are
