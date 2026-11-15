@@ -428,7 +428,7 @@ footer .status.done{color:var(--accent)}
    =========================================================================== */
 /*__PAYLOAD_START__*/
 var PAYLOAD = {
-  fileName: "KRI_2026_1834.dng",
+  fileName: "Beispiel.dng",
   photoCount: 1,
   returnPort: 0,            /* 0 = kein Rückweg, nur Anzeigen und Kopieren */
   token: "",
@@ -439,11 +439,13 @@ var PAYLOAD = {
   workflow: "",          /* gemerkter Workflow-Schluessel, "" = keiner */
   applyToAll: false,     /* Voreinstellung des Hakens bei Mehrfachauswahl */
   uiLang: "",            /* leer = Sprache des Browsers */
-  depicts: "Q640 # Harald Krichel; Q42 # Douglas Adams",
-  createdDuring: "Q124692383 # Berlinale 2026",
-  categories: "Berlinale 2026; Harald Krichel",
-  captions: { de: "Harald Krichel bei der Berlinale 2026", en: "" },
-  freetext: "{{Information}}\n[[Category:Photographs by Harald Krichel]]"
+  /* NEUTRALE Beispieldaten, erkennbar als Beispiel: bis 2.1.21 konnten sie
+     auf echte Fotos geraten, und echte Namen sahen dort wie echte Daten aus. */
+  depicts: "Q42 # Douglas Adams",
+  createdDuring: "",
+  categories: "Beispielkategorie",
+  captions: { de: "Beispiel-Unterschrift", en: "Example caption" },
+  freetext: ""
 };
 /*__PAYLOAD_END__*/
 
@@ -526,8 +528,8 @@ var STRINGS = {
     setsNeedSave: "Ohne Brücke werden Sets erst mit „Speichern“ in Lightroom abgelegt.",
     setNeedName: "Bitte erst einen Namen für das Set eingeben.",
     setFull: "Es gibt schon 30 Sets – bitte erst eines löschen.",
+    noStateYet: "Noch keine Daten aus Lightroom – bitte einen Moment warten oder in Lightroom ein Foto wählen.",
     setSkippedPerson: "{0} Kategorie(n) von Zeigt-Einträgen (Person …) nicht ins Set übernommen.",
-    appVersionPrefix: "Version",
     galTitle: "Galerie (optional)",
     galHint: "Commons-Seite, auf der die hochgeladenen Dateien als Galerie ergänzt werden, z. B. Commons:Frankfurter Buchmesse 2026/Porträts. Gilt für dieses Foto und ersetzt die Galerie aus dem Export-Dialog.",
     galPh: "Seitentitel auf Commons",
@@ -663,8 +665,8 @@ var STRINGS = {
     setsNeedSave: "Without the bridge, sets are stored only with \"Save\".",
     setNeedName: "Please enter a name for the set first.",
     setFull: "There are already 30 sets – please delete one first.",
+    noStateYet: "No data from Lightroom yet – please wait a moment or select a photo in Lightroom.",
     setSkippedPerson: "{0} category/categories of depicted items (person …) left out of the set.",
-    appVersionPrefix: "Version",
     galTitle: "Gallery (optional)",
     galHint: "Commons page to which the uploaded files are added as a gallery, e.g. Commons:Frankfurt Book Fair 2026/Portraits. Applies to this photo and replaces the gallery of the export dialog.",
     galPh: "Page title on Commons",
@@ -1649,6 +1651,10 @@ function wireSets(){
       if (!isNaN(cur) && SETS[cur]) name = SETS[cur].name;
     }
     if (!name) { setStatus(t("setNeedName")); return; }
+    /* Vor dem ersten Zustand aus Lightroom kennt der Tab die gespeicherten
+       Sets noch nicht - ein Speichern schickte nur dieses eine Set, und
+       Lightroom ersetzte damit alle anderen. */
+    if (BRIDGE && !realState) { setStatus(t("noStateYet"), "dirty"); return; }
     var btn = this;
     btn.disabled = true;
     zeigtKategorien(function(ausser){
@@ -1729,6 +1735,7 @@ function wireSets(){
   document.getElementById("setDel").addEventListener("click", function(){
     var i = parseInt(sel.value, 10);
     if (isNaN(i) || !SETS[i]) return;
+    if (BRIDGE && !realState) { setStatus(t("noStateYet"), "dirty"); return; }
     var weg = SETS.splice(i, 1)[0];
     renderSets();
     setStatus(t("setDeleted", weg.name));
@@ -3068,6 +3075,7 @@ function triggerDownload(text, filename) {
 }
 
 function save(){
+  if (BRIDGE && !realState) { setStatus(t("noStateYet"), "dirty"); return; }
   if (BRIDGE) { saveViaBridge(); return; }
   var out = JSON.stringify(payloadOut(), null, 2);
   triggerDownload(out, RESULT_FILENAME);
@@ -3109,8 +3117,17 @@ function bridgeUrl(path){
   return path + "?t=" + encodeURIComponent(BRIDGE.token);
 }
 
+/* Ist schon ein ECHTER Zustand aus Lightroom angekommen? Vorher steht im Tab
+   nur die leere Startbelegung - die darf weder „behalten“ noch gespeichert
+   werden. Bis 2.1.21 war das die eingebaute Beispiel-Nutzlast: kam der erste
+   Zustand ueber den Ereignisstrom VOR der Antwort auf /state, wurde sie mit
+   „Satz im Tab behalten“ auf das echte Foto gelegt ({{Information}} und
+   [[Category:Photographs by Harald Krichel]] im Weiteren Text). */
+var realState = false;
+
 /* Uebernimmt einen von Lightroom geschickten Zustand. */
 function adoptState(p, kept){
+  realState = true;
   PAYLOAD = p;
   load();
   dirty = false;
@@ -3211,6 +3228,15 @@ function onBridgeState(env){
   var keep = document.getElementById("keepSet");
   var neueAuswahl = env.state.photoKey !== PAYLOAD.photoKey ||
     Number(env.state.photoCount || 1) !== photoCount();
+  /* Der ERSTE echte Zustand wird immer uebernommen - auch wenn vorher schon
+     getippt wurde. Sonst bliebe der Tab auf der leeren Startbelegung stehen
+     und „Speichern“ dauerhaft gesperrt. */
+  if (!realState) {
+    pendingState = null;
+    adoptState(env.state);
+    setStatus(t("switchedTo", PAYLOAD.fileName || "?"));
+    return;
+  }
   if (keep && keep.checked && neueAuswahl) {
     var k = JSON.parse(JSON.stringify({
       depicts: state.depicts, createdDuring: state.createdDuring,
@@ -3305,6 +3331,14 @@ function setUiLang(lang){
 }
 
 function init(){
+  /* Im Brueckenbetrieb KEINE Beispieldaten zeigen: bis Lightroom den echten
+     Zustand schickt, bleibt der Editor leer. Die Beispiel-Nutzlast ist nur fuer
+     die allein geoeffnete Datei gedacht. */
+  if (BRIDGE) {
+    PAYLOAD = { fileName: "", photoKey: "", photoCount: 1, depicts: "",
+                createdDuring: "", categories: "", captions: {}, freetext: "",
+                eventTemplate: "", token: "" };
+  }
   load();
   UI = pickUiLang();
 

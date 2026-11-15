@@ -5,6 +5,7 @@
 "$$$/LrMediaWiki/Export/DescriptionError=Fehler beim Lesen der Dateibeschreibung"
 "$$$/LrMediaWiki/Export/NameCamera=Nicht hochgeladen: Der Dateiname „^1“ ist ein Kameraname (IMG, DSC …). Bitte der Datei einen beschreibenden Namen geben."
 "$$$/LrMediaWiki/Export/NameNoMeaning=Nicht hochgeladen: Der Dateiname „^1“ hat keine beschreibende Bedeutung (zwei Wörter oder ein Wort mit mindestens vier Buchstaben, kein Kamerazähler). Bitte der Datei einen beschreibenden Namen geben."
+"$$$/LrMediaWiki/Bridge/SetsStored=Veranstaltungs-Sets gespeichert"
 "$$$/LrMediaWiki/Export/SetConflictTitle=Im Export-Dialog steht eine Kategorie eines anderen Veranstaltungs-Sets"
 "$$$/LrMediaWiki/Export/SetConflictText=Die Kategorie „^1“ im Export-Dialog gehört zum Set „^2“, das Foto (^3) trägt aber Kategorien des Sets „^4“. Bitte die Kategorie aus dem Export-Dialog entfernen und stattdessen im Set führen."
 "$$$/LrMediaWiki/Export/SetConflictUpload=Trotzdem hochladen"

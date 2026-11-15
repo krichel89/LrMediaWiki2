@@ -419,6 +419,19 @@ MediaWikiInterface.buildFileDescription = function(exportFields, photo)
 	end
 	-- Remove manually written [[Category:...]] from freetext (they will be appended cleanly at the end)
 	descriptionAll = string.gsub(descriptionAll, '%[%[Category:[^%]]+%]%]\n?', '')
+	-- A bare {{Information}} line inside the description is always a mistake
+	-- (the infobox is built here, around the description); it came from the
+	-- editor's sample data in 2.1.6-2.1.21. Lines holding only that template
+	-- call - with or without spaces, any case - are dropped.
+	do
+		local kept = {}
+		for line in (descriptionAll .. '\n'):gmatch('(.-)\n') do
+			if not line:match('^%s*{{%s*[Ii]nformation%s*}}%s*$') then
+				kept[#kept + 1] = line
+			end
+		end
+		descriptionAll = table.concat(kept, '\n')
+	end
 	descriptionAll = MediaWikiUtils.trim(descriptionAll)
 
 	-- Tracking category, the way upload tools on Commons conventionally mark

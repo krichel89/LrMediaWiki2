@@ -280,6 +280,21 @@ local function probe(port)
 	return true
 end
 
+-- Does the helper on this port accept OUR token? /state needs the token, so
+-- anything but 403 means the helper is the one started with it. Guards against
+-- pairing the port of one helper with the token of another (see start()).
+local function owns(port, token)
+	local _, headers = LrHttp.get('http://127.0.0.1:' .. tostring(port)
+		.. '/state?t=' .. tostring(token))
+	local status = headers and headers.status or nil
+	if status == nil or status == 403 then
+		MediaWikiUtils.trace('SDC bridge: port ' .. tostring(port)
+			.. ' does not accept this session token (status ' .. tostring(status) .. ')')
+		return false
+	end
+	return true
+end
+
 --------------------------------------------------------------------------------
 -- Starting the helper – PAUSING (LrTasks.execute)
 --------------------------------------------------------------------------------
@@ -326,11 +341,12 @@ end
 
 -- Starts the helper if it is not already up. Returns true on success.
 -- PAUSING – call from an async task, never inside a pcall.
-function MediaWikiSdcBridge.start()
+local function startLocked()
 	MediaWikiSdcBridge.lastError = nil
 
 	-- Already up in this session?
-	if MediaWikiSdcBridge.port and probe(MediaWikiSdcBridge.port) then
+	if MediaWikiSdcBridge.port and MediaWikiSdcBridge.token
+		and probe(MediaWikiSdcBridge.port) then
 		return true
 	end
 
@@ -415,11 +431,61 @@ function MediaWikiSdcBridge.start()
 		return false
 	end
 
+	-- The helper on that port must be the one started with THIS token.
+	if not owns(tonumber(info.port), token) then
+		MediaWikiSdcBridge.lastError =
+			'Die Hintergrund-App auf Port ' .. tostring(info.port)
+			.. ' gehoert nicht zu dieser Sitzung (falsches Sitzungstoken).\n\n'
+			.. 'Bitte Lightroom neu starten.'
+		return false
+	end
+
 	MediaWikiSdcBridge.port = tonumber(info.port)
 	MediaWikiSdcBridge.token = token
 	MediaWikiUtils.trace('SDC bridge: up on port ' .. tostring(MediaWikiSdcBridge.port))
 	return true
 end
+
+-- ONE start at a time. Until 2.1.22 two tasks could start side by side - the
+-- autostart from MediaWikiInit and a click on the menu a moment later. Each
+-- made its own token and launched its own helper, but both wrote and read the
+-- SAME port file: the session then held the port of one helper and the token
+-- of the other, and the browser (and Lightroom's own /sync) got "forbidden".
+-- A second caller now waits for the first and takes its result.
+function MediaWikiSdcBridge.start()
+	-- A flag left standing (the starting task was cancelled by Lightroom
+	-- before it could lower it) must not block every later start: after
+	-- STALE_START seconds it no longer counts.
+	local STALE_START = 60
+	if MediaWikiSdcBridge.starting
+		and os.time() - (MediaWikiSdcBridge.startingSince or 0) > STALE_START then
+		MediaWikiUtils.trace('SDC bridge: stale start flag ignored')
+		MediaWikiSdcBridge.starting = false
+	end
+	if MediaWikiSdcBridge.starting then
+		local waited = 0
+		-- LrTasks.sleep pauses - no pcall. Longest possible start: every
+		-- candidate but the last fails fast, the last takes the full timeout.
+		while MediaWikiSdcBridge.starting and waited < START_TIMEOUT + 4 * FAST_TIMEOUT + 5 do
+			LrTasks.sleep(0.25)
+			waited = waited + 0.25
+		end
+		return MediaWikiSdcBridge.port ~= nil and MediaWikiSdcBridge.token ~= nil
+	end
+	MediaWikiSdcBridge.starting = true
+	MediaWikiSdcBridge.startingSince = os.time()
+	-- LrTasks.pcall, not pcall: startLocked pauses. The flag must come down
+	-- even if it throws, or no later start would ever run.
+	local ok, result = LrTasks.pcall(startLocked)
+	MediaWikiSdcBridge.starting = false
+	if not ok then
+		MediaWikiSdcBridge.lastError = tostring(result)
+		MediaWikiUtils.trace('SDC bridge: start failed: ' .. tostring(result))
+		return false
+	end
+	return result
+end
+
 
 --------------------------------------------------------------------------------
 -- The sync loop – PAUSING throughout
@@ -438,7 +504,7 @@ local function applyIncoming(catalog, result, currentPhoto, currentKey)
 		local LrDialogs = import 'LrDialogs'
 		if MediaWikiSdcData.storeEventSets(result.eventSets) then
 			MediaWikiUtils.trace('SDC bridge: event sets stored')
-			LrDialogs.showBezel('Veranstaltungs-Sets gespeichert', 1.5)
+			LrDialogs.showBezel(LOC "$$$/LrMediaWiki/Bridge/SetsStored=Event sets saved", 1.5)
 		end
 		return
 	end
@@ -578,6 +644,11 @@ function MediaWikiSdcBridge.ensureRunning()
 	end
 	if not MediaWikiSdcBridge.start() then
 		return false
+	end
+	-- A second caller that waited in start() arrives here after the first
+	-- has already started the loop - one loop is enough.
+	if MediaWikiSdcBridge.running then
+		return true
 	end
 	MediaWikiSdcBridge.running = true
 	LrTasks.startAsyncTask(function()

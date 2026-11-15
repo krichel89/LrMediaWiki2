@@ -1,5 +1,44 @@
 # LrMediaWiki2 – SDC extensions (Cammello alignment) + security/robustness fixes
 
+## Version 2.1.23
+
+- **Fix: "forbidden" in the browser instead of the editor (reported after the
+  upgrade to Lightroom 16).** Two starts of the bridge could run side by side -
+  the autostart at plug-in load and a click on the menu a moment later. Each
+  made its own session token and launched its own helper, but both used the
+  SAME port file: the session ended up with the port of one helper and the
+  token of the other, so every request was refused (403), Lightroom's own
+  `/sync` included. Reproduced with the real `MediaWikiSdcBridge.lua` and a
+  simulated Lightroom (2.1.22: two helpers, token mismatch). Now only ONE
+  start runs at a time (a second caller waits and takes the result), only one
+  sync loop is started, and a helper is accepted only if it answers to this
+  session's token; a start flag left standing for more than 60 s no longer
+  blocks later starts. Whether this is what happened on the reporter's machine
+  is not proven - it fits the symptom (a restart of Lightroom cured it).
+- Editor, before the first state from Lightroom has arrived: "Save as set" and
+  "Delete set" are refused (saving then sent a list with only the new set and
+  Lightroom replaced all stored sets with it); the first real state is always
+  taken over, even if something was typed before (the tab could get stuck with
+  "Save" refused for good).
+- Sample data in the editor page is neutral now (no real name, no real event);
+  it only shows when the HTML file is opened on its own.
+- The bezel "Event sets saved" goes through the translation; unused editor
+  string removed.
+
+## Version 2.1.22
+
+- **Fix: `{{Information}}` and `[[Category:Photographs by Harald Krichel]]`
+  landed in real photos (reported, uploads with 2.1.20).** Both come from the
+  SAMPLE payload built into the editor page. In bridge mode the page started
+  with that sample; when the first state from Lightroom arrived over the event
+  stream BEFORE the answer to `/state`, "Satz im Tab behalten" (on by default)
+  laid the sample over the real photo. Reproduced in jsdom with the 2.1.21 page.
+  Now: in bridge mode the page starts EMPTY, "keep" only applies after a real
+  state has arrived, and "Save" is refused until then.
+- Upload: a line consisting only of `{{Information}}` is dropped from the
+  description (it is always wrong there), so photos already carrying it upload
+  cleanly. The category line is NOT removed automatically - it may be wanted.
+
 ## Version 2.1.21
 
 - **Person categories stay out of event sets.** "Save as set" leaves out the
